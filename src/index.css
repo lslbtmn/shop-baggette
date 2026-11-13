@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #FAF8F5;
+    color: #141414;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  h1, h2, h3, .font-editorial {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+
+  .font-mono-tag {
+    font-family: 'Courier Prime', 'Courier New', monospace;
+  }
+}
+
+/* Custom delicate scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF8F5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D9D2C7;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B8B0A2;
+}
+
+/* Marquee infinite scroll */
+@keyframes scrollText {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: scrollText 35s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+/* Delicate borders & ribbon badges */
+.border-dainty {
+  border: 1px solid #EBE5DB;
+}
+
+.border-dashed-dainty {
+  border: 1px dashed #D6CDC0;
+}
+
+/* Sandy Liang aesthetic subtle paper grain */
+.bg-grain {
+  background-image: radial-gradient(#E8E2D7 0.75px, transparent 0.75px);
+  background-size: 16px 16px;
+}
