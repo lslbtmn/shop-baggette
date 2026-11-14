@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Package,
   ShoppingBag,
@@ -10,15 +10,23 @@ import {
   Copy,
   TrendingUp,
   AlertCircle,
-  ExternalLink,
   RotateCcw,
   RefreshCw,
   Search,
-  Filter,
-  Eye,
+  Key,
+  CheckCircle2,
+  XCircle,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { Product, Order, ProductCategory, ProductColor } from '../../types';
-import { dbService, isSupabaseConfigured } from '../../lib/supabase';
+import {
+  dbService,
+  isSupabaseConfigured,
+  getSupabaseCredentials,
+  setSupabaseCredentials,
+  resetSupabaseCredentials,
+} from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
 interface AdminDashboardProps {
@@ -38,12 +46,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'database'>('products');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Product Add/Edit Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Product Form State
+  // Form State
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState<ProductCategory>('Baggettes');
   const [formPrice, setFormPrice] = useState(320);
@@ -57,14 +66,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [formTags, setFormTags] = useState('NEW ARRIVAL');
   const [formColors, setFormColors] = useState('Noir Black:#111111, Ballet Pink:#FAD8DD');
 
-  // SQL Copy state
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // Supabase Credentials Settings State
+  const credentials = getSupabaseCredentials();
+  const [inputUrl, setInputUrl] = useState(credentials.url);
+  const [inputKey, setInputKey] = useState(credentials.key);
+  const [diagRunning, setDiagRunning] = useState(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
 
-  // Compute Metrics
+  // Banners & Notifications
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  // Metrics
   const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
   const outOfStockCount = products.filter((p) => p.stock_quantity === 0).length;
   const lowStockCount = products.filter((p) => p.stock_quantity > 0 && p.stock_quantity < 5).length;
+
+  // Run initial diagnostic check if Supabase is configured
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      runDiagnostics();
+    }
+  }, []);
+
+  const runDiagnostics = async () => {
+    setDiagRunning(true);
+    const result = await dbService.testConnection();
+    setDiagResult(result);
+    setDiagRunning(false);
+  };
 
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
@@ -166,17 +196,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       created_at: editingProduct?.created_at || new Date().toISOString(),
     };
 
-    await dbService.upsertProduct(newProduct);
+    // Save with full error checking
+    const res = await dbService.upsertProduct(newProduct);
     await onRefreshData();
     setIsProductModalOpen(false);
-    showBanner('Product successfully saved to catalog! 🎀');
+
+    if (res.inDatabase) {
+      showBanner('Product successfully written to Supabase PostgreSQL database! 🟢', 'success');
+    } else if (res.error) {
+      showBanner(`Saved locally, but Supabase rejected write: "${res.error}". Run supabase-schema.sql to fix RLS!`, 'error');
+    } else {
+      showBanner('Product saved to catalog! 🎀', 'success');
+    }
   };
 
   const handleDeleteProduct = async (productId: string) => {
     if (confirm('Are you sure you want to remove this bag from the catalog?')) {
-      await dbService.deleteProduct(productId);
+      const res = await dbService.deleteProduct(productId);
       await onRefreshData();
-      showBanner('Product deleted.');
+      if (res.success) {
+        showBanner('Product removed from catalog and database.', 'success');
+      } else {
+        showBanner(`Deleted locally, but Supabase error: ${res.error}`, 'warning');
+      }
     }
   };
 
@@ -190,78 +232,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: Order['status']) => {
-    await dbService.updateOrderStatus(orderId, status);
+    const res = await dbService.updateOrderStatus(orderId, status);
     await onRefreshData();
-    showBanner(`Order ${orderId} status updated to ${status}.`);
+    if (res.success) {
+      showBanner(`Order ${orderId} status updated to ${status}.`, 'success');
+    } else {
+      showBanner(`Status updated locally, Supabase error: ${res.error}`, 'warning');
+    }
   };
 
-  const showBanner = (msg: string) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(null), 4000);
+  const handleSeedAllToSupabase = async () => {
+    const res = await dbService.seedAllToSupabase();
+    if (res.error) {
+      showBanner(`Error seeding to Supabase: ${res.error}. Check RLS policies!`, 'error');
+    } else {
+      showBanner(`Successfully uploaded ${res.count} bags directly into Supabase! 🎀`, 'success');
+      await onRefreshData();
+      runDiagnostics();
+    }
+  };
+
+  const handleSaveCredentials = () => {
+    if (!inputUrl.trim() || !inputKey.trim()) {
+      showBanner('Please provide both a valid Supabase URL and Anon Key.', 'error');
+      return;
+    }
+    setSupabaseCredentials(inputUrl, inputKey);
+    showBanner('Supabase credentials saved and active! Running diagnostics...', 'success');
+    runDiagnostics();
+    onRefreshData();
+  };
+
+  const handleResetCredentials = () => {
+    resetSupabaseCredentials();
+    const creds = getSupabaseCredentials();
+    setInputUrl(creds.url);
+    setInputKey(creds.key);
+    showBanner('Reset to .env credentials.', 'success');
+    runDiagnostics();
+    onRefreshData();
+  };
+
+  const showBanner = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setStatusMessage({ text, type });
+    setTimeout(() => setStatusMessage(null), 6000);
   };
 
   const handleCopySql = () => {
-    const sql = `-- Run this in your Supabase SQL Editor:
--- https://supabase.com/dashboard/project/_/sql
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  full_name TEXT,
-  role TEXT DEFAULT 'customer' CHECK (role IN ('customer', 'admin')),
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Profiles readable" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Profiles self update" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
-CREATE TABLE IF NOT EXISTS public.products (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  slug TEXT UNIQUE NOT NULL,
-  price NUMERIC(10, 2) NOT NULL,
-  compare_at_price NUMERIC(10, 2),
-  category TEXT NOT NULL,
-  description TEXT,
-  details JSONB DEFAULT '[]'::jsonb,
-  materials TEXT,
-  dimensions TEXT,
-  care TEXT,
-  colors JSONB DEFAULT '[]'::jsonb,
-  images JSONB DEFAULT '[]'::jsonb,
-  tags JSONB DEFAULT '[]'::jsonb,
-  stock_quantity INTEGER DEFAULT 10,
-  is_featured BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
+    const sql = `-- RUN THIS IN YOUR SUPABASE SQL EDITOR TO FIX ALL RLS PERMISSIONS & SEED:
+-- 1. Products Table Permissive RLS
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public read products" ON public.products FOR SELECT USING (true);
-CREATE POLICY "Admin write products" ON public.products FOR ALL USING (true);
+DROP POLICY IF EXISTS "Enable all access for all users" ON public.products;
+DROP POLICY IF EXISTS "Admins can insert products" ON public.products;
+DROP POLICY IF EXISTS "Admins can update products" ON public.products;
+DROP POLICY IF EXISTS "Admins can delete products" ON public.products;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.products;
 
-CREATE TABLE IF NOT EXISTS public.orders (
-  id TEXT PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE SET NULL,
-  customer_email TEXT NOT NULL,
-  customer_name TEXT NOT NULL,
-  shipping_address JSONB NOT NULL,
-  items JSONB NOT NULL,
-  subtotal NUMERIC(10, 2) NOT NULL,
-  shipping NUMERIC(10, 2) DEFAULT 0,
-  discount NUMERIC(10, 2) DEFAULT 0,
-  total NUMERIC(10, 2) NOT NULL,
-  status TEXT DEFAULT 'Pending',
-  tracking_number TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Enable read access for all users" ON public.products FOR SELECT USING (true);
+CREATE POLICY "Enable all access for all users" ON public.products FOR ALL USING (true) WITH CHECK (true);
 
+-- 2. Profiles Table & Trigger
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Profiles permit all select" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles permit all insert" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles permit all update" ON public.profiles;
+
+CREATE POLICY "Profiles permit all select" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Profiles permit all insert" ON public.profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Profiles permit all update" ON public.profiles FOR UPDATE USING (true);
+
+-- 3. Orders Table
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Orders read write" ON public.orders FOR ALL USING (true);
+DROP POLICY IF EXISTS "Orders permit all" ON public.orders;
+CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 `;
 
     navigator.clipboard.writeText(sql);
@@ -269,528 +312,659 @@ CREATE POLICY "Orders read write" ON public.orders FOR ALL USING (true);
     setTimeout(() => setCopiedSql(false), 3000);
   };
 
-  const handleResetCatalog = async () => {
-    if (confirm('Reset catalog and orders to default factory seed bags?')) {
-      dbService.resetCatalog();
-      await onRefreshData();
-      showBanner('Catalog reset to initial SS26 seed! 🎀');
-    }
-  };
-
   const isSupabaseLive = isSupabaseConfigured();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-      {/* Top Banner & Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-ink-200 gap-4">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in">
+      {/* Top Banner & Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 sm:pb-6 border-b border-ink-200 gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-sm">🎀</span>
-            <span className="text-xs font-mono-tag uppercase tracking-[0.25em] text-ink-500">
-              Back-Office Operations
+            <span className="text-[10px] sm:text-xs font-mono-tag uppercase tracking-[0.25em] text-ink-500">
+              Operations & Database Control
             </span>
           </div>
-          <h1 className="font-editorial text-3xl sm:text-4xl text-ink-900">
-            Baggette Shop Admin Dashboard
+          <h1 className="font-editorial text-2xl sm:text-3xl lg:text-4xl text-ink-900">
+            Admin Dashboard
           </h1>
-          <p className="text-xs font-mono-tag text-ink-500 mt-1">
-            Logged in as {user?.full_name} ({user?.email}) • Role: Admin Director
+          <p className="text-[11px] sm:text-xs font-mono-tag text-ink-500 mt-0.5 truncate">
+            {user?.full_name} ({user?.email}) • Admin Director
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={onRefreshData}
             className="p-2 border border-ink-300 rounded-sm hover:bg-cream-100 text-ink-700 transition-colors"
             title="Refresh database"
+            aria-label="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={onCloseAdmin}
-            className="bg-ink-900 text-cream-50 px-5 py-2 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors shadow-sm"
+            className="flex-1 sm:flex-initial bg-ink-900 text-cream-50 px-4 py-2 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors shadow-xs text-center"
           >
-            Return to Storefront
+            Storefront
           </button>
         </div>
       </div>
 
-      {/* Status banner */}
+      {/* Status Alert Banner */}
       {statusMessage && (
-        <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-tag rounded-sm flex items-center justify-between animate-fade-in">
-          <span>🎀 {statusMessage}</span>
-          <button onClick={() => setStatusMessage(null)} className="text-emerald-600 font-bold">
+        <div
+          className={`mt-4 p-3 border text-xs font-mono-tag rounded-sm flex items-start justify-between gap-2 animate-fade-in ${
+            statusMessage.type === 'error'
+              ? 'bg-rosebud-50 border-rosebud-300 text-rosebud-800'
+              : statusMessage.type === 'warning'
+              ? 'bg-amber-50 border-amber-300 text-amber-800'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+          }`}
+        >
+          <span>{statusMessage.text}</span>
+          <button
+            onClick={() => setStatusMessage(null)}
+            className="font-bold p-0.5 hover:opacity-75 flex-shrink-0"
+          >
             ×
           </button>
         </div>
       )}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-8">
-        <div className="bg-white/70 border border-ink-200 p-5 rounded-sm">
-          <div className="flex items-center justify-between text-ink-500 text-xs font-mono-tag uppercase">
-            <span>Gross Revenue</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
+      {/* Database Diagnostic Notice if RLS write is blocked */}
+      {diagResult && !diagResult.canInsertProduct && (
+        <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-sm text-xs font-mono-tag text-amber-900 space-y-2">
+          <div className="flex items-center gap-2 font-bold text-amber-800">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+            <span>Supabase RLS Policy Warning: Writes to database are currently blocked by Row Level Security!</span>
           </div>
-          <div className="font-editorial text-2xl sm:text-3xl font-bold text-ink-900 mt-2">
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            Your Supabase tables exist, but PostgreSQL RLS is rejecting inserts. To enable adding/editing bags and placing orders in Supabase, run the one-click permissive SQL snippet in your Supabase SQL editor:
+          </p>
+          <button
+            onClick={handleCopySql}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-900 text-cream-50 rounded-xs text-[11px] font-bold hover:bg-amber-800 transition-colors"
+          >
+            {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedSql ? 'Copied Permissive SQL!' : 'Copy 1-Click Permissive RLS Script'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 my-6">
+        <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
+          <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
+            <span>Gross Revenue</span>
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+          </div>
+          <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
             ${totalRevenue.toLocaleString()}
           </div>
-          <p className="text-[10px] font-mono-tag text-ink-400 mt-1">Calculated from all customer orders</p>
+          <p className="text-[9px] sm:text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">
+            {orders.length} orders
+          </p>
         </div>
 
-        <div className="bg-white/70 border border-ink-200 p-5 rounded-sm">
-          <div className="flex items-center justify-between text-ink-500 text-xs font-mono-tag uppercase">
-            <span>Total Orders</span>
-            <ShoppingBag className="w-4 h-4 text-rosebud-600" />
+        <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
+          <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
+            <span>Customer Orders</span>
+            <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rosebud-600" />
           </div>
-          <div className="font-editorial text-2xl sm:text-3xl font-bold text-ink-900 mt-2">
+          <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
             {orders.length}
           </div>
-          <p className="text-[10px] font-mono-tag text-ink-400 mt-1">Fulfillment queue active</p>
+          <p className="text-[9px] sm:text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">
+            Fulfillment queue
+          </p>
         </div>
 
-        <div className="bg-white/70 border border-ink-200 p-5 rounded-sm">
-          <div className="flex items-center justify-between text-ink-500 text-xs font-mono-tag uppercase">
+        <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
+          <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
             <span>Bag Models</span>
-            <Package className="w-4 h-4 text-ink-600" />
+            <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-ink-600" />
           </div>
-          <div className="font-editorial text-2xl sm:text-3xl font-bold text-ink-900 mt-2">
+          <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
             {products.length}
           </div>
-          <p className="text-[10px] font-mono-tag text-ink-400 mt-1">Active catalog entries</p>
+          <p className="text-[9px] sm:text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">
+            Active catalog entries
+          </p>
         </div>
 
-        <div className="bg-white/70 border border-ink-200 p-5 rounded-sm">
-          <div className="flex items-center justify-between text-ink-500 text-xs font-mono-tag uppercase">
-            <span>Stock Alerts</span>
-            <AlertCircle className="w-4 h-4 text-amber-600" />
+        <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
+          <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
+            <span>Inventory Alert</span>
+            <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
           </div>
-          <div className="font-editorial text-2xl sm:text-3xl font-bold text-ink-900 mt-2">
+          <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
             {outOfStockCount + lowStockCount}
           </div>
-          <p className="text-[10px] font-mono-tag text-rosebud-600 mt-1">
-            {outOfStockCount} sold out • {lowStockCount} low
+          <p className="text-[9px] sm:text-[10px] font-mono-tag text-rosebud-600 mt-0.5 truncate">
+            {outOfStockCount} out • {lowStockCount} low
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-ink-200 mb-6 text-xs font-mono-tag uppercase tracking-wider">
+      {/* Tabs Bar (Scrollable on mobile) */}
+      <div className="flex border-b border-ink-200 mb-6 text-xs font-mono-tag uppercase tracking-wider overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('products')}
-          className={`pb-3 px-4 flex items-center gap-2 transition-colors ${
+          className={`pb-3 px-3 sm:px-4 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
             activeTab === 'products'
               ? 'border-b-2 border-ink-900 font-bold text-ink-900'
               : 'text-ink-500 hover:text-ink-800'
           }`}
         >
-          <Package className="w-4 h-4" />
-          <span>Product Catalog ({products.length})</span>
+          <Package className="w-4 h-4 flex-shrink-0" />
+          <span>Products ({products.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('orders')}
-          className={`pb-3 px-4 flex items-center gap-2 transition-colors ${
+          className={`pb-3 px-3 sm:px-4 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
             activeTab === 'orders'
               ? 'border-b-2 border-ink-900 font-bold text-ink-900'
               : 'text-ink-500 hover:text-ink-800'
           }`}
         >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Customer Orders ({orders.length})</span>
+          <ShoppingBag className="w-4 h-4 flex-shrink-0" />
+          <span>Orders ({orders.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('database')}
-          className={`pb-3 px-4 flex items-center gap-2 transition-colors ${
+          className={`pb-3 px-3 sm:px-4 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
             activeTab === 'database'
               ? 'border-b-2 border-ink-900 font-bold text-ink-900'
               : 'text-ink-500 hover:text-ink-800'
           }`}
         >
-          <Database className="w-4 h-4" />
-          <span>Supabase Database Sync</span>
+          <Database className="w-4 h-4 flex-shrink-0" />
+          <span>Supabase Sync</span>
         </button>
       </div>
 
       {/* TAB 1: PRODUCT CATALOG */}
       {activeTab === 'products' && (
         <div className="space-y-4">
-          {/* Controls: Search, Filter, Add */}
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-            <div className="flex items-center gap-2 flex-1 max-w-md">
+          {/* Controls: Search, Filter, View Toggler, Add */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 sm:gap-3">
+            <div className="flex items-center gap-2 flex-1">
               <div className="relative flex-1">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-ink-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-ink-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search bags by name or ID..."
-                  className="w-full bg-cream-100 border border-ink-200 pl-9 pr-3 py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
+                  placeholder="Search bags..."
+                  className="w-full bg-cream-100 border border-ink-200 pl-8 pr-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
                 />
               </div>
 
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-cream-100 border border-ink-200 px-3 py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
+                className="bg-cream-100 border border-ink-200 px-2.5 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900 max-w-[130px] sm:max-w-none"
               >
                 <option value="All">All Categories</option>
                 <option value="Baggettes">Baggettes</option>
-                <option value="Minis & Pouches">Minis & Pouches</option>
-                <option value="Totes & Shoulders">Totes & Shoulders</option>
-                <option value="Ribbon & Bow Editions">Ribbon & Bow Editions</option>
+                <option value="Minis & Pouches">Minis</option>
+                <option value="Totes & Shoulders">Totes</option>
+                <option value="Ribbon & Bow Editions">Ribbon Editions</option>
               </select>
             </div>
 
-            <button
-              onClick={openAddProductModal}
-              className="bg-ink-900 text-cream-50 px-4 py-2 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Baguette</span>
-            </button>
+            <div className="flex items-center gap-2 justify-between sm:justify-end">
+              {/* View Mode Toggler (Cards vs Table) */}
+              <div className="flex items-center border border-ink-200 rounded-sm bg-cream-100 p-0.5 text-ink-600">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`p-1.5 rounded-xs transition-colors ${
+                    viewMode === 'cards' ? 'bg-white text-ink-900 shadow-2xs font-bold' : 'hover:text-ink-900'
+                  }`}
+                  title="Card View"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-xs transition-colors ${
+                    viewMode === 'table' ? 'bg-white text-ink-900 shadow-2xs font-bold' : 'hover:text-ink-900'
+                  }`}
+                  title="Table View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={openAddProductModal}
+                className="bg-ink-900 text-cream-50 px-3.5 py-2 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Baguette</span>
+              </button>
+            </div>
           </div>
 
-          {/* Products Table */}
-          <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-xs">
-            <table className="w-full text-left text-xs font-mono-tag">
-              <thead className="bg-cream-100/80 border-b border-ink-200 uppercase tracking-wider text-ink-500">
-                <tr>
-                  <th className="py-3 px-4">Bag Image</th>
-                  <th className="py-3 px-4">Model & Silhouette</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Price</th>
-                  <th className="py-3 px-4">Inventory</th>
-                  <th className="py-3 px-4">Tags</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100">
-                {filteredProducts.map((p) => (
-                  <tr key={p.id} className="hover:bg-cream-50/70 transition-colors">
-                    <td className="py-3 px-4">
-                      <img
-                        src={p.images[0]}
-                        alt={p.name}
-                        className="w-12 h-14 object-cover rounded-sm border border-ink-200 bg-cream-100"
-                      />
-                    </td>
-                    <td className="py-3 px-4 max-w-xs">
-                      <div className="font-editorial text-sm font-semibold text-ink-900 line-clamp-1">
-                        {p.name}
-                      </div>
-                      <div className="text-[10px] text-ink-400 mt-0.5">ID: {p.id}</div>
-                    </td>
-                    <td className="py-3 px-4 text-ink-700">{p.category}</td>
-                    <td className="py-3 px-4">
-                      <span className="font-bold text-ink-900">${p.price}</span>
-                      {p.compare_at_price && (
-                        <span className="text-[10px] text-ink-400 line-through ml-1.5">
-                          ${p.compare_at_price}
+          {/* VIEW MODE A: RESPONSIVE CARDS (Ideal on mobile screens) */}
+          {viewMode === 'cards' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {filteredProducts.map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-white/80 border border-ink-200 rounded-sm p-3.5 flex gap-3 shadow-2xs hover:border-ink-300 transition-colors"
+                >
+                  <img
+                    src={p.images[0]}
+                    alt={p.name}
+                    className="w-16 h-20 object-cover rounded-sm border border-ink-200 bg-cream-100 flex-shrink-0"
+                  />
+                  <div className="flex-1 overflow-hidden flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start gap-1">
+                        <h4 className="font-editorial text-xs sm:text-sm font-semibold text-ink-900 line-clamp-1">
+                          {p.name}
+                        </h4>
+                        <span className="font-mono-tag text-xs font-bold text-ink-900 whitespace-nowrap">
+                          ${p.price}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleStockDelta(p, -1)}
-                          className="w-5 h-5 border border-ink-300 rounded flex items-center justify-center hover:bg-cream-200 text-xs font-bold"
-                          title="Decrement stock"
-                        >
-                          -
-                        </button>
-                        <span
-                          className={`font-bold ${
-                            p.stock_quantity === 0
-                              ? 'text-rosebud-600 font-extrabold'
-                              : p.stock_quantity < 5
-                              ? 'text-amber-600'
-                              : 'text-ink-900'
-                          }`}
-                        >
-                          {p.stock_quantity}
-                        </span>
-                        <button
-                          onClick={() => handleStockDelta(p, 1)}
-                          className="w-5 h-5 border border-ink-300 rounded flex items-center justify-center hover:bg-cream-200 text-xs font-bold"
-                          title="Increment stock"
-                        >
-                          +
-                        </button>
                       </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1">
-                        {p.tags.slice(0, 2).map((t) => (
-                          <span
-                            key={t}
-                            className="text-[9px] bg-rosebud-50 border border-rosebud-200 text-rosebud-800 px-1.5 py-0.5 rounded-sm"
+                      <p className="text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">{p.category}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-ink-100">
+                      {/* Inventory Stepper */}
+                      <div className="flex items-center gap-1.5 text-xs font-mono-tag">
+                        <span className="text-[10px] text-ink-500">Stock:</span>
+                        <div className="flex items-center border border-ink-200 rounded-xs bg-cream-50 px-1">
+                          <button
+                            onClick={() => handleStockDelta(p, -1)}
+                            className="px-1 text-ink-500 hover:text-ink-900 font-bold"
                           >
-                            {t}
+                            -
+                          </button>
+                          <span
+                            className={`px-1 font-bold ${
+                              p.stock_quantity === 0 ? 'text-rosebud-600' : 'text-ink-900'
+                            }`}
+                          >
+                            {p.stock_quantity}
                           </span>
-                        ))}
+                          <button
+                            onClick={() => handleStockDelta(p, 1)}
+                            className="px-1 text-ink-500 hover:text-ink-900 font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+
+                      {/* Edit / Delete */}
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => openEditProductModal(p)}
-                          className="p-1.5 text-ink-600 hover:text-ink-900 border border-ink-200 hover:border-ink-400 rounded-sm"
-                          title="Edit Bag"
+                          className="p-1 text-ink-600 hover:text-ink-900 border border-ink-200 rounded-xs"
+                          title="Edit"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           onClick={() => handleDeleteProduct(p.id)}
-                          className="p-1.5 text-rosebud-600 hover:text-rosebud-800 border border-rosebud-200 hover:border-rosebud-400 rounded-sm"
-                          title="Delete Bag"
+                          className="p-1 text-rosebud-600 hover:text-rosebud-800 border border-rosebud-200 rounded-xs"
+                          title="Delete"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                    </td>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* VIEW MODE B: DESKTOP TABLE */}
+          {viewMode === 'table' && (
+            <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-2xs">
+              <table className="w-full text-left text-xs font-mono-tag min-w-[650px]">
+                <thead className="bg-cream-100/80 border-b border-ink-200 uppercase tracking-wider text-ink-500">
+                  <tr>
+                    <th className="py-2.5 px-3">Image</th>
+                    <th className="py-2.5 px-3">Model</th>
+                    <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3">Price</th>
+                    <th className="py-2.5 px-3">Stock</th>
+                    <th className="py-2.5 px-3">Tags</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {filteredProducts.map((p) => (
+                    <tr key={p.id} className="hover:bg-cream-50/70 transition-colors">
+                      <td className="py-2.5 px-3">
+                        <img
+                          src={p.images[0]}
+                          alt={p.name}
+                          className="w-10 h-12 object-cover rounded-sm border border-ink-200 bg-cream-100"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 max-w-xs">
+                        <div className="font-editorial text-xs sm:text-sm font-semibold text-ink-900 line-clamp-1">
+                          {p.name}
+                        </div>
+                        <div className="text-[10px] text-ink-400">ID: {p.id}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-ink-700">{p.category}</td>
+                      <td className="py-2.5 px-3 font-bold text-ink-900">${p.price}</td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleStockDelta(p, -1)}
+                            className="w-4 h-4 border border-ink-300 rounded flex items-center justify-center text-xs"
+                          >
+                            -
+                          </button>
+                          <span className={`font-bold ${p.stock_quantity === 0 ? 'text-rosebud-600' : ''}`}>
+                            {p.stock_quantity}
+                          </span>
+                          <button
+                            onClick={() => handleStockDelta(p, 1)}
+                            className="w-4 h-4 border border-ink-300 rounded flex items-center justify-center text-xs"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="text-[9px] bg-rosebud-50 border border-rosebud-200 text-rosebud-800 px-1 py-0.5 rounded-sm">
+                          {p.tags[0] || 'Standard'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openEditProductModal(p)}
+                            className="p-1 text-ink-600 hover:text-ink-900 border border-ink-200 rounded-sm"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="p-1 text-rosebud-600 hover:text-rosebud-800 border border-rosebud-200 rounded-sm"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {/* TAB 2: CUSTOMER ORDERS */}
       {activeTab === 'orders' && (
-        <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-xs">
-          <table className="w-full text-left text-xs font-mono-tag">
+        <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-2xs">
+          <table className="w-full text-left text-xs font-mono-tag min-w-[650px]">
             <thead className="bg-cream-100/80 border-b border-ink-200 uppercase tracking-wider text-ink-500">
               <tr>
-                <th className="py-3 px-4">Order ID</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Items</th>
-                <th className="py-3 px-4">Total</th>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Fulfillment Status</th>
+                <th className="py-2.5 px-3">Order ID</th>
+                <th className="py-2.5 px-3">Customer</th>
+                <th className="py-2.5 px-3">Items</th>
+                <th className="py-2.5 px-3">Total</th>
+                <th className="py-2.5 px-3">Date</th>
+                <th className="py-2.5 px-3">Fulfillment Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {orders.map((order) => (
-                <tr key={order.id} className="hover:bg-cream-50/70 transition-colors">
-                  <td className="py-3 px-4 font-bold text-ink-900">{order.id}</td>
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-ink-900">{order.customer_name}</div>
-                    <div className="text-[10px] text-ink-400">{order.customer_email}</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="space-y-1">
-                      {order.items.map((i, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 text-[11px]">
-                          <span className="text-rosebud-600">🎀</span>
-                          <span className="line-clamp-1">{i.product_name}</span>
-                          <span className="text-ink-400 font-bold">x{i.quantity}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 font-bold text-ink-900">${order.total} USD</td>
-                  <td className="py-3 px-4 text-ink-500">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="py-3 px-4">
-                    <select
-                      value={order.status}
-                      onChange={(e) =>
-                        handleUpdateOrderStatus(order.id, e.target.value as Order['status'])
-                      }
-                      className="bg-cream-100 border border-ink-300 text-xs font-mono-tag px-2.5 py-1 rounded-sm focus:outline-none focus:border-ink-900"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Processing">Processing (Wrapping)</option>
-                      <option value="Shipped">Shipped</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-ink-400">
+                    No orders placed yet.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                orders.map((order) => (
+                  <tr key={order.id} className="hover:bg-cream-50/70 transition-colors">
+                    <td className="py-2.5 px-3 font-bold text-ink-900">{order.id}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-ink-900">{order.customer_name}</div>
+                      <div className="text-[10px] text-ink-400">{order.customer_email}</div>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="space-y-0.5">
+                        {order.items.map((i, idx) => (
+                          <div key={idx} className="flex items-center gap-1 text-[11px]">
+                            <span className="text-rosebud-600">🎀</span>
+                            <span className="line-clamp-1">{i.product_name}</span>
+                            <span className="text-ink-400 font-bold">x{i.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-ink-900">${order.total} USD</td>
+                    <td className="py-2.5 px-3 text-ink-500">
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <select
+                        value={order.status}
+                        onChange={(e) =>
+                          handleUpdateOrderStatus(order.id, e.target.value as Order['status'])
+                        }
+                        className="bg-cream-100 border border-ink-300 text-xs font-mono-tag px-2 py-1 rounded-sm focus:outline-none focus:border-ink-900"
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing (Wrapping)</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* TAB 3: SUPABASE DATABASE PORTAL */}
+      {/* TAB 3: SUPABASE DATABASE SYNC & DIAGNOSTICS */}
       {activeTab === 'database' && (
-        <div className="space-y-8">
-          {/* Connection Status Card */}
-          <div className="bg-white/80 border border-ink-200 p-6 rounded-sm shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-ink-100">
+        <div className="space-y-6">
+          {/* Diagnostic Status Card */}
+          <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-ink-100">
               <div className="flex items-center gap-3">
                 <div
-                  className={`w-4 h-4 rounded-full ${
-                    isSupabaseLive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  className={`w-4 h-4 rounded-full flex-shrink-0 ${
+                    diagResult?.canInsertProduct ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                   }`}
                 />
                 <div>
-                  <h3 className="font-editorial text-lg text-ink-900">
-                    {isSupabaseLive ? 'Supabase Database Connected' : 'Local Persistence & Sync Sandbox'}
+                  <h3 className="font-editorial text-base sm:text-lg text-ink-900">
+                    {diagResult?.canInsertProduct
+                      ? 'Supabase PostgreSQL Database Connected & Active'
+                      : isSupabaseLive
+                      ? 'Connected to Supabase (RLS Writes Need Configuration)'
+                      : 'Running in Local Storage Mode'}
                   </h3>
-                  <p className="text-xs font-mono-tag text-ink-500">
-                    {isSupabaseLive
-                      ? 'Live PostgreSQL connection active. All catalog mutations sync directly with Supabase.'
-                      : 'Running in built-in offline-resilient sandbox with local storage persistence. Ready to link your Supabase database.'}
+                  <p className="text-[11px] sm:text-xs font-mono-tag text-ink-500">
+                    Endpoint: {credentials.url || 'Not configured'}
                   </p>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <button
-                  onClick={handleResetCatalog}
-                  className="px-3 py-1.5 border border-ink-300 text-xs font-mono-tag text-ink-700 hover:text-ink-900 rounded-sm flex items-center gap-1.5 hover:bg-cream-100 transition-colors"
+                  type="button"
+                  onClick={runDiagnostics}
+                  disabled={diagRunning}
+                  className="px-3 py-1.5 border border-ink-300 text-xs font-mono-tag text-ink-700 hover:text-ink-900 rounded-sm flex items-center gap-1.5 hover:bg-cream-100 transition-colors disabled:opacity-50"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reset Seed Data</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${diagRunning ? 'animate-spin' : ''}`} />
+                  <span>{diagRunning ? 'Testing...' : 'Test Connection'}</span>
                 </button>
-              </div>
-            </div>
 
-            {/* Step by step to connect Supabase */}
-            <div className="mt-6 space-y-4">
-              <h4 className="text-xs font-mono-tag uppercase tracking-wider text-ink-900 font-bold">
-                How to link your Supabase Database:
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono-tag">
-                <div className="bg-cream-100/60 p-4 border border-ink-200 rounded-sm space-y-2">
-                  <div className="font-bold text-ink-900 flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-ink-900 text-cream-50 flex items-center justify-center text-[11px]">
-                      1
-                    </span>
-                    <span>Create Supabase Project</span>
-                  </div>
-                  <p className="text-ink-600">
-                    Head to{' '}
-                    <a
-                      href="https://supabase.com"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline text-rosebud-600"
-                    >
-                      supabase.com
-                    </a>{' '}
-                    and create a new free PostgreSQL project.
-                  </p>
-                </div>
-
-                <div className="bg-cream-100/60 p-4 border border-ink-200 rounded-sm space-y-2">
-                  <div className="font-bold text-ink-900 flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-ink-900 text-cream-50 flex items-center justify-center text-[11px]">
-                      2
-                    </span>
-                    <span>Run Database Schema</span>
-                  </div>
-                  <p className="text-ink-600">
-                    Copy the SQL script below and paste it into the <strong>SQL Editor</strong> in Supabase to create the tables.
-                  </p>
-                </div>
-
-                <div className="bg-cream-100/60 p-4 border border-ink-200 rounded-sm space-y-2">
-                  <div className="font-bold text-ink-900 flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-ink-900 text-cream-50 flex items-center justify-center text-[11px]">
-                      3
-                    </span>
-                    <span>Set .env Credentials</span>
-                  </div>
-                  <p className="text-ink-600">
-                    Add <code className="bg-cream-200 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> &{' '}
-                    <code className="bg-cream-200 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code> to your `.env` file.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* SQL Schema Copy Box */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-mono-tag uppercase tracking-wider text-ink-700 font-bold">
-                  PostgreSQL Schema (`supabase-schema.sql`)
-                </span>
                 <button
-                  onClick={handleCopySql}
-                  className="flex items-center gap-1 px-3 py-1 bg-ink-900 text-cream-50 text-xs font-mono-tag rounded-sm hover:bg-rosebud-600 transition-colors shadow-sm"
+                  type="button"
+                  onClick={handleSeedAllToSupabase}
+                  className="px-3 py-1.5 bg-ink-900 text-cream-50 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors flex items-center gap-1.5"
                 >
-                  {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedSql ? 'Copied to Clipboard!' : 'Copy SQL Script'}</span>
+                  <span>Sync 8 Bags to DB</span>
                 </button>
               </div>
-
-              <pre className="bg-ink-900 text-cream-100 p-4 rounded-sm text-[11px] font-mono overflow-x-auto max-h-72">
-{`-- BAGGETTE SHOP SUPABASE SCHEMA
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  full_name TEXT,
-  role TEXT DEFAULT 'customer' CHECK (role IN ('customer', 'admin')),
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.products (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  slug TEXT UNIQUE NOT NULL,
-  price NUMERIC(10, 2) NOT NULL,
-  compare_at_price NUMERIC(10, 2),
-  category TEXT NOT NULL,
-  description TEXT,
-  details JSONB DEFAULT '[]'::jsonb,
-  materials TEXT,
-  dimensions TEXT,
-  care TEXT,
-  colors JSONB DEFAULT '[]'::jsonb,
-  images JSONB DEFAULT '[]'::jsonb,
-  tags JSONB DEFAULT '[]'::jsonb,
-  stock_quantity INTEGER DEFAULT 10,
-  is_featured BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.orders (
-  id TEXT PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE SET NULL,
-  customer_email TEXT NOT NULL,
-  customer_name TEXT NOT NULL,
-  shipping_address JSONB NOT NULL,
-  items JSONB NOT NULL,
-  subtotal NUMERIC(10, 2) NOT NULL,
-  shipping NUMERIC(10, 2) DEFAULT 0,
-  discount NUMERIC(10, 2) DEFAULT 0,
-  total NUMERIC(10, 2) NOT NULL,
-  status TEXT DEFAULT 'Pending',
-  tracking_number TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);`}
-              </pre>
             </div>
+
+            {/* Diagnostic Table */}
+            {diagResult && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono-tag pt-2">
+                <div className="p-2.5 bg-cream-50 border border-ink-200 rounded-xs flex items-center justify-between">
+                  <span>products table</span>
+                  {diagResult.productsOk ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rosebud-600" />
+                  )}
+                </div>
+                <div className="p-2.5 bg-cream-50 border border-ink-200 rounded-xs flex items-center justify-between">
+                  <span>profiles table</span>
+                  {diagResult.profilesOk ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rosebud-600" />
+                  )}
+                </div>
+                <div className="p-2.5 bg-cream-50 border border-ink-200 rounded-xs flex items-center justify-between">
+                  <span>orders table</span>
+                  {diagResult.ordersOk ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rosebud-600" />
+                  )}
+                </div>
+                <div className="p-2.5 bg-cream-50 border border-ink-200 rounded-xs flex items-center justify-between">
+                  <span>Write Permissions</span>
+                  {diagResult.canInsertProduct ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-amber-600" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {diagResult?.details && (
+              <p className="text-[11px] font-mono-tag text-ink-600 bg-cream-100 p-2.5 rounded-sm">
+                Status: {diagResult.details}
+              </p>
+            )}
+          </div>
+
+          {/* Supabase Dynamic Credentials Editor */}
+          <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 font-bold text-xs font-mono-tag uppercase text-ink-900">
+              <Key className="w-4 h-4" />
+              <span>Supabase Connection Credentials</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono-tag">
+              <div>
+                <label className="block uppercase text-ink-500 mb-1 text-[10px]">Project URL</label>
+                <input
+                  type="text"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  placeholder="https://xyz.supabase.co"
+                  className="w-full bg-cream-50 border border-ink-300 px-3 py-1.5 rounded-sm font-mono text-[11px]"
+                />
+              </div>
+              <div>
+                <label className="block uppercase text-ink-500 mb-1 text-[10px]">Anon / Public Key</label>
+                <input
+                  type="text"
+                  value={inputKey}
+                  onChange={(e) => setInputKey(e.target.value)}
+                  placeholder="sb_publishable_..."
+                  className="w-full bg-cream-50 border border-ink-300 px-3 py-1.5 rounded-sm font-mono text-[11px]"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleSaveCredentials}
+                className="bg-ink-900 text-cream-50 px-4 py-1.5 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors"
+              >
+                Save Credentials
+              </button>
+              <button
+                type="button"
+                onClick={handleResetCredentials}
+                className="border border-ink-300 text-ink-700 px-3 py-1.5 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-cream-100 transition-colors"
+              >
+                Reset to .env
+              </button>
+            </div>
+          </div>
+
+          {/* SQL Script Quick Copy */}
+          <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs font-mono-tag uppercase tracking-wider text-ink-800 font-bold">
+                1-Click Permissive SQL Script (Run in Supabase SQL Editor)
+              </span>
+              <button
+                onClick={handleCopySql}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-ink-900 text-cream-50 text-xs font-mono-tag rounded-sm hover:bg-rosebud-600 transition-colors shadow-2xs"
+              >
+                {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSql ? 'Copied to Clipboard!' : 'Copy SQL Script'}</span>
+              </button>
+            </div>
+            <pre className="bg-ink-900 text-cream-100 p-3 sm:p-4 rounded-sm text-[10px] sm:text-[11px] font-mono overflow-x-auto max-h-48">
+{`-- Products Table Permissive Policy
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all access for all users" ON public.products;
+CREATE POLICY "Enable all access for all users" ON public.products FOR ALL USING (true) WITH CHECK (true);
+
+-- Profiles Table Permissive Policy
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Profiles permit all select" ON public.profiles;
+CREATE POLICY "Profiles permit all select" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Profiles permit all insert" ON public.profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Profiles permit all update" ON public.profiles FOR UPDATE USING (true);
+
+-- Orders Table Permissive Policy
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Orders permit all" ON public.orders;
+CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHECK (true);`}
+            </pre>
           </div>
         </div>
       )}
 
-      {/* PRODUCT ADD/EDIT MODAL */}
+      {/* PRODUCT ADD/EDIT MODAL (Fully Responsive) */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
-            className="fixed inset-0 bg-ink-900/60 backdrop-blur-sm"
+            className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs"
             onClick={() => setIsProductModalOpen(false)}
           />
 
-          <div className="min-h-screen px-4 py-8 flex items-center justify-center">
-            <div className="relative bg-cream-50 w-full max-w-2xl border border-ink-200 shadow-2xl rounded-sm p-6 sm:p-8 z-10 animate-fade-in my-auto">
-              <div className="flex justify-between items-center border-b border-ink-200 pb-4 mb-6">
+          <div className="min-h-screen px-2 sm:px-4 py-4 sm:py-8 flex items-end sm:items-center justify-center">
+            <div className="relative bg-cream-50 w-full max-w-2xl border border-ink-200 shadow-2xl rounded-t-lg sm:rounded-sm p-5 sm:p-8 z-10 animate-fade-in my-auto max-h-[92vh] overflow-y-auto">
+              <div className="flex justify-between items-center border-b border-ink-200 pb-3 mb-4">
                 <div>
-                  <h3 className="font-editorial text-2xl text-ink-900">
+                  <h3 className="font-editorial text-xl sm:text-2xl text-ink-900">
                     {editingProduct ? 'Edit Baguette Silhouette' : 'Add New Baguette to Catalog'}
                   </h3>
-                  <p className="text-xs font-mono-tag text-ink-500">
+                  <p className="text-[11px] font-mono-tag text-ink-500">
                     Modelled with Sandy Liang downtown aesthetic
                   </p>
                 </div>
@@ -802,7 +976,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
                 </button>
               </div>
 
-              <form onSubmit={handleSaveProduct} className="space-y-4 text-xs font-mono-tag">
+              <form onSubmit={handleSaveProduct} className="space-y-3.5 text-xs font-mono-tag">
                 <div>
                   <label className="block uppercase text-ink-600 mb-1">Bag Name</label>
                   <input
@@ -811,17 +985,17 @@ CREATE TABLE IF NOT EXISTS public.orders (
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     placeholder="e.g. The Orchard Pleated Baggette"
-                    className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                    className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block uppercase text-ink-600 mb-1">Category</label>
                     <select
                       value={formCategory}
                       onChange={(e) => setFormCategory(e.target.value as ProductCategory)}
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                     >
                       <option value="Baggettes">Baggettes</option>
                       <option value="Minis & Pouches">Minis & Pouches</option>
@@ -837,14 +1011,14 @@ CREATE TABLE IF NOT EXISTS public.orders (
                       required
                       value={formPrice}
                       onChange={(e) => setFormPrice(Number(e.target.value))}
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block uppercase text-ink-600 mb-1">Compare At Price (Optional)</label>
+                    <label className="block uppercase text-ink-600 mb-1">Compare Price (Optional)</label>
                     <input
                       type="number"
                       value={formComparePrice || ''}
@@ -852,7 +1026,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
                         setFormComparePrice(e.target.value ? Number(e.target.value) : undefined)
                       }
                       placeholder="e.g. 385"
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                     />
                   </div>
 
@@ -863,29 +1037,29 @@ CREATE TABLE IF NOT EXISTS public.orders (
                       required
                       value={formStock}
                       onChange={(e) => setFormStock(Number(e.target.value))}
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block uppercase text-ink-600 mb-1">Editorial Description</label>
+                  <label className="block uppercase text-ink-600 mb-1">Description</label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm focus:outline-none focus:border-ink-900"
+                    className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block uppercase text-ink-600 mb-1">Materials</label>
                     <input
                       type="text"
                       value={formMaterials}
                       onChange={(e) => setFormMaterials(e.target.value)}
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 rounded-sm"
                     />
                   </div>
                   <div>
@@ -894,7 +1068,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
                       type="text"
                       value={formDimensions}
                       onChange={(e) => setFormDimensions(e.target.value)}
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 rounded-sm"
                     />
                   </div>
                 </div>
@@ -907,11 +1081,11 @@ CREATE TABLE IF NOT EXISTS public.orders (
                     rows={2}
                     value={formImages}
                     onChange={(e) => setFormImages(e.target.value)}
-                    className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm font-mono text-[11px]"
+                    className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 rounded-sm font-mono text-[11px]"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block uppercase text-ink-600 mb-1">Tags (comma separated)</label>
                     <input
@@ -919,7 +1093,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
                       value={formTags}
                       onChange={(e) => setFormTags(e.target.value)}
                       placeholder="NEW ARRIVAL, BESTSELLER"
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 rounded-sm"
                     />
                   </div>
                   <div>
@@ -931,24 +1105,24 @@ CREATE TABLE IF NOT EXISTS public.orders (
                       value={formColors}
                       onChange={(e) => setFormColors(e.target.value)}
                       placeholder="Noir:#111111, Pink:#FAD8DD"
-                      className="w-full bg-cream-100 border border-ink-300 px-3 py-2 rounded-sm"
+                      className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 rounded-sm"
                     />
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-ink-200 flex justify-end gap-3">
+                <div className="pt-3 border-t border-ink-200 flex justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => setIsProductModalOpen(false)}
-                    className="px-4 py-2 border border-ink-300 rounded-sm hover:bg-cream-100 uppercase"
+                    className="px-4 py-2 border border-ink-300 rounded-sm hover:bg-cream-100 uppercase text-xs"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-ink-900 text-cream-50 px-6 py-2 rounded-sm hover:bg-rosebud-600 transition-colors uppercase tracking-wider"
+                    className="bg-ink-900 text-cream-50 px-5 py-2 rounded-sm hover:bg-rosebud-600 transition-colors uppercase tracking-wider text-xs"
                   >
-                    Save Product
+                    Save Baguette
                   </button>
                 </div>
               </form>

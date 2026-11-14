@@ -1,33 +1,80 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Product, Order, UserProfile } from '../types';
 import { INITIAL_PRODUCTS, SAMPLE_ORDERS } from './mockData';
 
-// Retrieve Supabase environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Config storage keys
+const SUPABASE_URL_KEY = 'baggette_supabase_url_custom';
+const SUPABASE_KEY_KEY = 'baggette_supabase_key_custom';
+
+export const getSupabaseCredentials = () => {
+  const customUrl = typeof window !== 'undefined' ? localStorage.getItem(SUPABASE_URL_KEY) : null;
+  const customKey = typeof window !== 'undefined' ? localStorage.getItem(SUPABASE_KEY_KEY) : null;
+
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+  const url = (customUrl && customUrl.trim()) || envUrl.trim();
+  const key = (customKey && customKey.trim()) || envKey.trim();
+
+  return { url, key };
+};
 
 export const isSupabaseConfigured = (): boolean => {
+  const { url, key } = getSupabaseCredentials();
   return (
-    typeof supabaseUrl === 'string' &&
-    supabaseUrl.trim().length > 0 &&
-    !supabaseUrl.includes('placeholder') &&
-    !supabaseUrl.includes('your-project') &&
-    typeof supabaseAnonKey === 'string' &&
-    supabaseAnonKey.trim().length > 0 &&
-    !supabaseAnonKey.includes('placeholder')
+    typeof url === 'string' &&
+    url.length > 0 &&
+    !url.includes('placeholder') &&
+    !url.includes('your-project') &&
+    typeof key === 'string' &&
+    key.length > 0 &&
+    !key.includes('placeholder')
   );
 };
 
-// Create client or fallback dummy client to avoid crashes
-export const supabase = isSupabaseConfigured()
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : createClient('https://mock-baggette.supabase.co', 'dummy-key-for-local-preview');
+// Singleton Client Management
+let currentClient: SupabaseClient | null = null;
+
+export const getSupabaseClient = (): SupabaseClient => {
+  if (currentClient) return currentClient;
+
+  const { url, key } = getSupabaseCredentials();
+  if (isSupabaseConfigured()) {
+    currentClient = createClient(url, key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    });
+  } else {
+    currentClient = createClient('https://mock-baggette.supabase.co', 'dummy-key-for-local-preview');
+  }
+  return currentClient;
+};
+
+export const setSupabaseCredentials = (url: string, key: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(SUPABASE_URL_KEY, url.trim());
+    localStorage.setItem(SUPABASE_KEY_KEY, key.trim());
+  }
+  currentClient = null; // Forces re-instantiation
+  return getSupabaseClient();
+};
+
+export const resetSupabaseCredentials = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(SUPABASE_URL_KEY);
+    localStorage.removeItem(SUPABASE_KEY_KEY);
+  }
+  currentClient = null;
+  return getSupabaseClient();
+};
+
+export const supabase = getSupabaseClient();
 
 // --- LOCAL PERSISTENCE LAYER (FALLBACK & SEED STORE) ---
 const PRODUCTS_STORAGE_KEY = 'baggette_products_v1';
 const ORDERS_STORAGE_KEY = 'baggette_orders_v1';
-const WISHLIST_STORAGE_KEY = 'baggette_wishlist_v1';
-const USERS_STORAGE_KEY = 'baggette_users_v1';
 
 export const getStoredProducts = (): Product[] => {
   try {
@@ -78,14 +125,17 @@ export const saveStoredOrders = (orders: Order[]) => {
 export const dbService = {
   // Fetch Products
   async getProducts(): Promise<Product[]> {
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from('products')
           .select('*')
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
+          // Sync local storage with live database so offline fallback is up to date
+          saveStoredProducts(data as Product[]);
           return data as Product[];
         }
         if (error) {
@@ -99,7 +149,8 @@ export const dbService = {
   },
 
   // Save / Upsert Product
-  async upsertProduct(product: Product): Promise<{ success: boolean; product: Product }> {
+  async upsertProduct(product: Product): Promise<{ success: boolean; product: Product; error?: string; inDatabase?: boolean }> {
+    // 1. Always update local storage first so UI updates immediately
     const localProducts = getStoredProducts();
     const existingIndex = localProducts.findIndex((p) => p.id === product.id);
     let updatedList: Product[];
@@ -112,43 +163,69 @@ export const dbService = {
     }
     saveStoredProducts(updatedList);
 
+    // 2. Sync to Supabase
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase.from('products').upsert(product);
-        if (error) console.error('Supabase upsert product error:', error);
-      } catch (e) {
+        const { data, error } = await client.from('products').upsert(product).select();
+        if (error) {
+          console.error('Supabase upsert product error:', error);
+          return {
+            success: false,
+            product,
+            error: error.message || 'Supabase write error',
+            inDatabase: false,
+          };
+        }
+        return { success: true, product, inDatabase: true };
+      } catch (e: any) {
         console.error('Failed to sync product to Supabase:', e);
+        return {
+          success: false,
+          product,
+          error: e.message || 'Network exception syncing to Supabase',
+          inDatabase: false,
+        };
       }
     }
 
-    return { success: true, product };
+    return { success: true, product, inDatabase: false };
   },
 
   // Delete Product
-  async deleteProduct(productId: string): Promise<boolean> {
+  async deleteProduct(productId: string): Promise<{ success: boolean; error?: string }> {
     const localProducts = getStoredProducts().filter((p) => p.id !== productId);
     saveStoredProducts(localProducts);
 
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('products').delete().eq('id', productId);
-      } catch (e) {
+        const { error } = await client.from('products').delete().eq('id', productId);
+        if (error) {
+          console.error('Supabase delete error:', error);
+          return { success: false, error: error.message };
+        }
+        return { success: true };
+      } catch (e: any) {
         console.error('Supabase delete error:', e);
+        return { success: false, error: e.message };
       }
     }
-    return true;
+    return { success: true };
   },
 
   // Fetch Orders
   async getOrders(): Promise<Order[]> {
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from('orders')
           .select('*')
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
+          saveStoredOrders(data as Order[]);
           return data as Order[];
         }
       } catch (e) {
@@ -159,17 +236,29 @@ export const dbService = {
   },
 
   // Create Order
-  async createOrder(order: Order): Promise<Order> {
+  async createOrder(order: Order): Promise<{ success: boolean; order: Order; error?: string }> {
     const currentOrders = getStoredOrders();
     const updated = [order, ...currentOrders];
     saveStoredOrders(updated);
 
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase.from('orders').insert([order]);
-        if (error) console.error('Supabase create order error:', error);
-      } catch (e) {
+        // Safe user_id formatting (accepts valid UUID or sets null for guest to avoid PostgreSQL 22P02 error)
+        const isUUID = order.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(order.user_id);
+        const orderPayload = {
+          ...order,
+          user_id: isUUID ? order.user_id : null,
+        };
+
+        const { error } = await client.from('orders').insert([orderPayload]);
+        if (error) {
+          console.error('Supabase create order error:', error);
+          return { success: false, order, error: error.message };
+        }
+      } catch (e: any) {
         console.error('Supabase create order exception:', e);
+        return { success: false, order, error: e.message };
       }
     }
 
@@ -177,31 +266,146 @@ export const dbService = {
     const currentProducts = getStoredProducts().map((p) => {
       const orderItem = order.items.find((item) => item.product_id === p.id);
       if (orderItem) {
+        const newStock = Math.max(0, p.stock_quantity - orderItem.quantity);
+        // also sync stock decrement to database
+        if (isSupabaseConfigured()) {
+          client.from('products').update({ stock_quantity: newStock }).eq('id', p.id).then();
+        }
         return {
           ...p,
-          stock_quantity: Math.max(0, p.stock_quantity - orderItem.quantity),
+          stock_quantity: newStock,
         };
       }
       return p;
     });
     saveStoredProducts(currentProducts);
 
-    return order;
+    return { success: true, order };
   },
 
   // Update Order Status
-  async updateOrderStatus(orderId: string, status: Order['status']): Promise<boolean> {
+  async updateOrderStatus(orderId: string, status: Order['status']): Promise<{ success: boolean; error?: string }> {
     const currentOrders = getStoredOrders().map((o) => (o.id === orderId ? { ...o, status } : o));
     saveStoredOrders(currentOrders);
 
+    const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('orders').update({ status }).eq('id', orderId);
-      } catch (e) {
+        const { error } = await client.from('orders').update({ status }).eq('id', orderId);
+        if (error) {
+          console.error('Supabase update status error:', error);
+          return { success: false, error: error.message };
+        }
+      } catch (e: any) {
         console.error('Supabase update status error:', e);
+        return { success: false, error: e.message };
       }
     }
-    return true;
+    return { success: true };
+  },
+
+  // Seed / Sync All Initial Products into Supabase
+  async seedAllToSupabase(): Promise<{ count: number; error?: string }> {
+    const client = getSupabaseClient();
+    if (!isSupabaseConfigured()) {
+      return { count: 0, error: 'Supabase credentials not configured' };
+    }
+
+    try {
+      const { data, error } = await client
+        .from('products')
+        .upsert(INITIAL_PRODUCTS, { onConflict: 'id' })
+        .select();
+
+      if (error) {
+        return { count: 0, error: error.message };
+      }
+      return { count: data?.length || INITIAL_PRODUCTS.length };
+    } catch (e: any) {
+      return { count: 0, error: e.message };
+    }
+  },
+
+  // Test / Diagnose Supabase tables
+  async testConnection(): Promise<{
+    connected: boolean;
+    productsOk: boolean;
+    profilesOk: boolean;
+    ordersOk: boolean;
+    canInsertProduct: boolean;
+    details: string;
+  }> {
+    const client = getSupabaseClient();
+    if (!isSupabaseConfigured()) {
+      return {
+        connected: false,
+        productsOk: false,
+        profilesOk: false,
+        ordersOk: false,
+        canInsertProduct: false,
+        details: 'No Supabase URL/Key provided in .env or settings.',
+      };
+    }
+
+    try {
+      // 1. Check products select
+      const { data: prodData, error: prodErr } = await client.from('products').select('id').limit(1);
+      const productsOk = !prodErr;
+
+      // 2. Check profiles
+      const { error: profErr } = await client.from('profiles').select('id').limit(1);
+      const profilesOk = !profErr;
+
+      // 3. Check orders
+      const { error: ordErr } = await client.from('orders').select('id').limit(1);
+      const ordersOk = !ordErr;
+
+      // 4. Test insert / write permission
+      const testId = 'test-ping-' + Date.now().toString(36);
+      const testItem = {
+        id: testId,
+        name: 'Database Health Check',
+        slug: 'db-health-check-' + Date.now().toString(36),
+        price: 1,
+        category: 'Baggettes',
+        description: 'Auto ping',
+        stock_quantity: 1,
+        colors: [{ name: 'Noir', hex: '#000000', inStock: true }],
+        images: ['https://example.com/check.jpg'],
+        tags: ['HEALTH_CHECK'],
+      };
+
+      const { error: insertErr } = await client.from('products').insert([testItem]);
+      let canInsertProduct = !insertErr;
+      if (canInsertProduct) {
+        // Clean up test item
+        await client.from('products').delete().eq('id', testId);
+      }
+
+      let details = '';
+      if (!productsOk) details += `Products table error: ${prodErr?.message}. `;
+      if (!profilesOk) details += `Profiles table error: ${profErr?.message}. `;
+      if (!ordersOk) details += `Orders table error: ${ordErr?.message}. `;
+      if (insertErr) details += `Write permission check failed (RLS): ${insertErr.message}. Run supabase-schema.sql to fix RLS policies!`;
+
+      return {
+        connected: productsOk || profilesOk,
+        productsOk,
+        profilesOk,
+        ordersOk,
+        canInsertProduct,
+        details: details || 'All database checks passed! Read & write permissions are active.',
+      };
+    } catch (err: any) {
+      return {
+        connected: false,
+        productsOk: false,
+        profilesOk: false,
+        ordersOk: false,
+        canInsertProduct: false,
+        details: err.message || 'Network error connecting to Supabase.',
+      };
+    }
   },
 
   // Reset to initial seed
@@ -209,5 +413,5 @@ export const dbService = {
     localStorage.removeItem(PRODUCTS_STORAGE_KEY);
     localStorage.removeItem(ORDERS_STORAGE_KEY);
     return INITIAL_PRODUCTS;
-  }
+  },
 };
