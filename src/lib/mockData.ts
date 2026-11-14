@@ -1,4 +1,4 @@
-import { Product, LookbookItem, Order } from '../types';
+import { Product, LookbookItem, Order, HeroConfig } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -8,13 +8,13 @@ export const INITIAL_PRODUCTS: Product[] = [
     price: 345,
     compare_at_price: 385,
     category: 'Ribbon & Bow Editions',
-    description: 'Our signature downtown baggette crafted in heavyweight lustrous Italian duchess satin. Finished with an exaggerated double-drape bow, dainty silver logo coin, and magnetic flap closure. Roomy enough for your phone, lip glosses, compact, and keys.',
+    description: 'Our signature silhouette crafted in heavyweight lustrous Italian duchess satin in our Osu atelier, Accra. Finished with an exaggerated double-drape bow, dainty silver logo coin, and concealed magnetic flap closure.',
     details: [
       'Delicate hand-tied double bow detail with soft draped tails',
       'Lined in signature ballet-pink grosgrain with interior card pocket',
       'Concealed magnetic snap flap closure',
       'Engraved silver-tone Baggette heart charm at zipper',
-      'Shoulder drop: 9.5 inches (fits comfortably over chunky knitwear)'
+      'Shoulder drop: 9.5 inches (fits comfortably over blazers & lightweight knits)'
     ],
     materials: '100% Italian Duchess Satin with 100% Cotton Grosgrain lining; Custom silver palladium hardware',
     dimensions: '10.5" W x 5.25" H x 2.75" D',
@@ -37,11 +37,11 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-2',
-    name: 'The Orchard Pleated Leather Baggette',
-    slug: 'orchard-pleated-baggette',
+    name: 'The Osu Pleated Leather Baggette',
+    slug: 'osu-pleated-baggette',
     price: 460,
     category: 'Baggettes',
-    description: 'Sculptural knife-pleated calf leather baggette inspired by downtown Chinatown bakeries and vintage 90s shoulder silhouettes. Features chunky polished nickel grommets and a vintage key keepsake.',
+    description: 'Sculptural knife-pleated calf leather baggette inspired by the vibrant creative pulse of Osu, Accra, and vintage 90s shoulder silhouettes. Features chunky polished nickel grommets and a keepsake key charm.',
     details: [
       'Accordion knife-pleated sides for expandable capacity',
       'Removable metal antique key & ribbon charm',
@@ -67,16 +67,16 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-3',
-    name: 'The Ludlow Ballet Puffer Cloud Shoulder',
-    slug: 'ludlow-ballet-puffer',
+    name: 'The Cantonments Ballet Puffer Cloud Shoulder',
+    slug: 'cantonments-ballet-puffer',
     price: 295,
     category: 'Totes & Shoulders',
-    description: 'Ultra-lightweight cloud quilted nylon bag with ruched scrunchie shoulder strap and mini grosgrain side ties. As comfortable as a feather pillow, perfectly sized to carry a paperback, kindle, water bottle, and daily treasures.',
+    description: 'Ultra-lightweight cloud quilted nylon bag with ruched scrunchie shoulder strap and mini grosgrain side ties. Perfect for carrying everyday treasures from Cantonments cafes to gallery afternoons in Accra.',
     details: [
       'Cloud pillowed quilting with hypoallergenic micro-fill',
       'Comfortable ruched ruffle shoulder strap',
       'Dual side drawstring bows for adjustable cinching',
-      'Water-repellent technical nylon shell'
+      'Water-repellent technical memory nylon shell'
     ],
     materials: 'Recycled technical memory nylon, poly fill, metal hardware',
     dimensions: '13.0" W x 8.0" H x 4.0" D',
@@ -101,12 +101,12 @@ export const INITIAL_PRODUCTS: Product[] = [
     slug: 'pierrot-petite-satin-pouch',
     price: 210,
     category: 'Minis & Pouches',
-    description: 'An evening miniature drawstring purse with ruffled frilled collar and delicate freshwater seed-pearl cord ties. Designed to dance in your hand from gallery openings to late-night dim sum.',
+    description: 'An evening miniature drawstring purse with ruffled frilled collar and delicate freshwater seed-pearl cord ties. Designed to dance in your hand from dinners at Labone to evening celebrations in Airport City.',
     details: [
       'Gathers into a ruffled rosette neckline with pearl tassels',
       'Detachable delicate rolo cross-body chain',
       'Embroidered mini rose insignia on base',
-      'Holds all iPhones up to Pro Max size'
+      'Holds all smartphones up to Pro Max size'
     ],
     materials: 'Pure silk crepe-back satin; natural freshwater cultured seed pearls',
     dimensions: '7.5" W x 8.0" H x 4.0" D',
@@ -127,18 +127,18 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-5',
-    name: 'The Chinatown Market Gingham Utility Tote',
-    slug: 'chinatown-gingham-utility-tote',
+    name: 'The Makola Gingham Ribbon Utility Tote',
+    slug: 'makola-gingham-utility-tote',
     price: 185,
     category: 'Totes & Shoulders',
-    description: 'Heavyweight organic cotton canvas tote in nostalgic sage & cream gingham checks. Adorned with exterior cargo slip pockets and contrast scarlet grosgrain tie closures.',
+    description: 'Heavyweight organic cotton canvas tote in nostalgic sage & cream gingham checks. Inspired by bustling market mornings and breezy afternoon strolls, adorned with exterior cargo slip pockets and scarlet ribbon ties.',
     details: [
-      'Four exterior slip compartments for water bottle, magazines & umbrella',
+      'Four exterior slip compartments for water bottle, notebook & umbrella',
       'Two ribbon bow tie closures across open top',
-      'Reinforced box-stitch shoulder straps for heavy loads',
+      'Reinforced box-stitch shoulder straps for heavy market hauls',
       'Interior zippered safety pocket and key lanyard snap'
     ],
-    materials: '16oz Organic Cotton Canvas, dyed with low-impact botanical pigments',
+    materials: '16oz Organic Cotton Canvas, dyed with low-impact pigments',
     dimensions: '16.0" W x 14.5" H x 5.5" D',
     care: 'Cold spot wash or gentle hand wash, line dry inside out in shade.',
     colors: [
@@ -157,20 +157,20 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-6',
-    name: 'The Delancey Floral Crystal Buckle Baggette',
-    slug: 'delancey-crystal-buckle-baggette',
+    name: 'The Airport Hills Floral Crystal Buckle Baggette',
+    slug: 'airport-hills-crystal-buckle-baggette',
     price: 520,
     category: 'Ribbon & Bow Editions',
-    description: 'A dazzling downtown statement piece. Smooth semi-patent leather with an antique crystal blossom buckle centerstage, surrounded by a tiny stitched lace scalloped trim.',
+    description: 'A dazzling statement piece from our Accra atelier. Smooth semi-patent leather with an antique crystal blossom buckle centerstage, surrounded by a delicate stitched lace scalloped trim.',
     details: [
-      'Custom hand-set Austrian crystal blossom centerpiece',
+      'Custom hand-set crystal blossom centerpiece',
       'Scalloped lace edge piping along front flap',
       'Adjustable strap for underarm or crook-of-arm carrying',
-      'Back exterior magnetic slit pocket for transit card'
+      'Back exterior magnetic slit pocket'
     ],
     materials: 'Calf patent leather, Austrian crystals, silver alloy hardware',
     dimensions: '10.0" W x 5.0" H x 2.5" D',
-    care: 'Gently buff with micro-fiber polishing cloth. Avoid direct sun heat.',
+    care: 'Gently buff with micro-fiber polishing cloth. Avoid direct excessive heat.',
     colors: [
       { name: 'Patent Cherry', hex: '#911B2C', inStock: true },
       { name: 'Patent Licorice', hex: '#161616', inStock: true }
@@ -186,16 +186,16 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-7',
-    name: 'The Hester Micro Bow Crossbody Coin Bag',
-    slug: 'hester-micro-bow-crossbody',
+    name: 'The Jamestown Micro Bow Crossbody Coin Bag',
+    slug: 'jamestown-micro-bow-crossbody',
     price: 155,
     category: 'Minis & Pouches',
-    description: 'Playful mini companion bag with three decorative satin micro bows across the flap. Designed to clip onto our totes or wear solo as a tiny statement necklace bag.',
+    description: 'Playful mini companion bag with three handmade satin micro bows. Inspired by the coastal breeze and timeless architecture of Jamestown, Accra.',
     details: [
       'Trio of delicate handmade satin micro-bows',
       'Includes detachable 42-inch slender leather cord strap',
       'Polished silver dog-clip for easy tote attachment',
-      'Fits AirPods, lipstick, house key, and emergency cash'
+      'Fits AirPods, lipstick, keys, and emergency cash'
     ],
     materials: 'Grainy calfskin leather, satin ribbons, polished rhodium clips',
     dimensions: '4.5" W x 3.75" H x 1.5" D',
@@ -216,11 +216,11 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'bag-8',
-    name: 'The Bowery Cargo Zip Sling Baggette',
-    slug: 'bowery-cargo-zip-sling',
+    name: 'The East Legon Cargo Zip Sling Baggette',
+    slug: 'east-legon-cargo-zip-sling',
     price: 375,
     category: 'Baggettes',
-    description: 'Utilitarian downtown grunge meets delicate feminine charm. Featuring asymmetrical zip pockets, oversized ring pullers, and a sweet detachable ribbon rosette brooch.',
+    description: 'Utilitarian chic meets delicate feminine charm. Featuring asymmetrical zip pockets, oversized ring pullers, and a sweet detachable ribbon rosette brooch.',
     details: [
       'Three front cargo zip pockets with oversized ring pulls',
       'Detachable handmade double-face grosgrain rosette pin',
@@ -232,7 +232,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     care: 'Wipe clean with mild soap suds and air dry.',
     colors: [
       { name: 'Washed Army Olive', hex: '#585F49', inStock: true },
-      { name: 'Downtown Asphalt', hex: '#262626', inStock: true }
+      { name: 'Asphalt Black', hex: '#262626', inStock: true }
     ],
     images: [
       'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=1000&q=80',
@@ -245,47 +245,61 @@ export const INITIAL_PRODUCTS: Product[] = [
   }
 ];
 
+export const DEFAULT_HERO_CONFIG: HeroConfig = {
+  badgeText: 'Spring/Summer 2026 Collection',
+  title: 'Bags that feel like ribbons tied in a hurry.',
+  subtitle: 'Handcrafted in our Accra atelier with delicate duchess satins, knife pleats, cloud puffers, and bows. Made for sunny walks across Osu, Cantonments, and beyond.',
+  fig1ProductId: 'bag-1',
+  fig1Caption: 'Fig. 01 — Osu Atelier',
+  fig2ProductId: 'bag-2',
+  fig2Caption: 'Fig. 02 — Cantonments Walk',
+  note1: 'Hand-finished ribbons',
+  note2: 'Crafted in our Accra atelier',
+  note3: 'Italian duchess satins'
+};
+
 export const LOOKBOOK_STORIES: LookbookItem[] = [
   {
     id: 'look-1',
-    title: 'Spring Sunday on Orchard Street',
+    title: 'Spring Sunday on Oxford Street',
     image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1000&q=80',
     season: 'SS26 Editorial',
-    location: 'Lower East Side, NYC',
+    location: 'Osu, Accra, Ghana',
     featuredProductId: 'bag-1',
     quote: '"I like bags that feel like a ribbon you found on the floor of a ballet studio that happens to carry your entire life."'
   },
   {
     id: 'look-2',
-    title: 'Matcha & Pastries in Columbus Park',
+    title: 'Warm Hibiscus Tea & Golden Afternoon',
     image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1000&q=80',
     season: 'Archive Notes',
-    location: 'Chinatown, NYC',
+    location: 'Cantonments, Accra, Ghana',
     featuredProductId: 'bag-2',
-    quote: '"Pleats that stretch when you grab a warm egg tart and two extra ginger candies."'
+    quote: '"Pleats that stretch when you grab warm pastries and two extra ginger candies."'
   },
   {
     id: 'look-3',
-    title: 'Dimes Square Afternoon Shadows',
+    title: 'Coastal Breeze & Seaside Shadows',
     image: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1000&q=80',
-    season: 'Downtown Utility',
-    location: 'Canal & Division',
+    season: 'Accra Utility',
+    location: 'Jamestown, Accra, Ghana',
     featuredProductId: 'bag-3',
-    quote: '"A bag as soft as a puffer coat, because city days are long and our shoulders deserve kindness."'
+    quote: '"A bag as soft as a cloud, because warm coastal days are long and our shoulders deserve kindness."'
   }
 ];
 
 export const SAMPLE_ORDERS: Order[] = [
   {
     id: 'BGT-8921',
-    customer_email: 'chloe.sevigny@lesdowntown.org',
-    customer_name: 'Chloe S.',
+    customer_email: 'chloe.mensah@baggette.com',
+    customer_name: 'Chloe M.',
     shipping_address: {
-      address: '142 Orchard St, Apt 4B',
-      city: 'New York',
-      state: 'NY',
-      zip: '10002',
-      country: 'United States'
+      address: '14 Ring Road Central, Osu',
+      city: 'Accra',
+      state: 'Greater Accra',
+      zip: 'GA-042-8821',
+      country: 'Ghana',
+      phone: '+233 24 456 7890'
     },
     items: [
       {
@@ -302,24 +316,25 @@ export const SAMPLE_ORDERS: Order[] = [
     discount: 0,
     total: 345,
     status: 'Shipped',
-    tracking_number: 'BGT-USPS-940010009281',
+    tracking_number: 'BGT-EXP-ACCRA-94001',
     created_at: '2026-03-01T14:22:00Z'
   },
   {
     id: 'BGT-8904',
-    customer_email: 'mia.goth@boweryfilm.com',
-    customer_name: 'Mia G.',
+    customer_email: 'ama.asantewaa@atelier.com',
+    customer_name: 'Ama A.',
     shipping_address: {
-      address: '68 Grand St',
-      city: 'New York',
-      state: 'NY',
-      zip: '10013',
-      country: 'United States'
+      address: '28 Boundary Road, East Legon',
+      city: 'Accra',
+      state: 'Greater Accra',
+      zip: 'GA-183-9021',
+      country: 'Ghana',
+      phone: '+233 50 123 4567'
     },
     items: [
       {
         product_id: 'bag-5',
-        product_name: 'The Chinatown Market Gingham Utility Tote',
+        product_name: 'The Makola Gingham Ribbon Utility Tote',
         price: 185,
         quantity: 1,
         color_name: 'Sage Gingham',
@@ -327,7 +342,7 @@ export const SAMPLE_ORDERS: Order[] = [
       },
       {
         product_id: 'bag-7',
-        product_name: 'The Hester Micro Bow Crossbody Coin Bag',
+        product_name: 'The Jamestown Micro Bow Crossbody Coin Bag',
         price: 155,
         quantity: 1,
         color_name: 'Baby Pink',
@@ -339,6 +354,7 @@ export const SAMPLE_ORDERS: Order[] = [
     discount: 34,
     total: 306,
     status: 'Processing',
+    tracking_number: 'BGT-EXP-ACCRA-88022',
     created_at: '2026-03-02T10:15:00Z'
   }
 ];

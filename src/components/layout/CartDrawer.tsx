@@ -85,7 +85,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onCheck
               ) : (
                 <span className="text-rosebud-700 font-bold flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>Free NYC & global delivery unlocked!</span>
+                  <span>Free Accra & worldwide delivery unlocked!</span>
                 </span>
               )}
               <span className="flex-shrink-0">{Math.round(progressToFreeShipping)}%</span>

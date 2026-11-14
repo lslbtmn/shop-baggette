@@ -15,7 +15,7 @@ export interface Product {
   id: string;
   name: string;
   slug: string;
-  price: number;
+  price: number; // in USD or GH₵ equivalent
   compare_at_price?: number;
   category: ProductCategory;
   description: string;
@@ -24,8 +24,8 @@ export interface Product {
   dimensions: string;
   care: string;
   colors: ProductColor[];
-  images: string[]; // [primary, hover/editorial, angle1, angle2...]
-  tags: string[]; // e.g. "NEW ARRIVAL", "SOLD OUT", "PRE-ORDER", "STAFF SWEETHEART"
+  images: string[];
+  tags: string[];
   stock_quantity: number;
   is_featured?: boolean;
   created_at?: string;
@@ -37,12 +37,23 @@ export interface CartItem {
   quantity: number;
 }
 
+export interface ShippingAddress {
+  address: string;
+  city: string;
+  state: string; // Region (e.g. Greater Accra, Ashanti)
+  zip: string; // Ghana Post GPS (e.g. GA-183-9021) or postal code
+  country: string; // Defaults to Ghana
+  phone?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  phone?: string;
   role: 'customer' | 'admin';
   avatar_url?: string;
+  shipping_address?: ShippingAddress;
   created_at?: string;
 }
 
@@ -61,13 +72,7 @@ export interface Order {
   user_id?: string;
   customer_email: string;
   customer_name: string;
-  shipping_address: {
-    address: string;
-    city: string;
-    state: string;
-    zip: string;
-    country: string;
-  };
+  shipping_address: ShippingAddress;
   items: OrderItem[];
   subtotal: number;
   shipping: number;
@@ -86,4 +91,17 @@ export interface LookbookItem {
   location: string;
   featuredProductId: string;
   quote: string;
+}
+
+export interface HeroConfig {
+  badgeText: string;
+  title: string;
+  subtitle: string;
+  fig1ProductId: string;
+  fig1Caption: string;
+  fig2ProductId: string;
+  fig2Caption: string;
+  note1: string;
+  note2: string;
+  note3: string;
 }

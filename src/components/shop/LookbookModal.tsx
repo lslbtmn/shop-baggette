@@ -34,10 +34,10 @@ export const LookbookModal: React.FC<LookbookModalProps> = ({
                 </span>
               </div>
               <h2 className="font-editorial text-2xl sm:text-3xl lg:text-4xl text-ink-900">
-                Downtown NYC Roamings
+                Accra Atelier Roamings
               </h2>
               <p className="text-[11px] sm:text-xs font-mono-tag text-ink-600 mt-1 max-w-lg">
-                Photographed on 35mm film across Chinatown, Dimes Square, and Orchard Street.
+                Photographed on 35mm film across Osu, Jamestown, and Labone.
               </p>
             </div>
             <button

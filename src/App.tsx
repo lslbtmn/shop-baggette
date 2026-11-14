@@ -11,7 +11,7 @@ import { LookbookModal } from './components/shop/LookbookModal';
 import { CheckoutModal } from './components/checkout/CheckoutModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { CustomerAccount } from './components/customer/CustomerAccount';
-import { Product, Order, ProductCategory } from './types';
+import { Product, Order, ProductCategory, HeroConfig } from './types';
 import { dbService } from './lib/supabase';
 import { useAuth } from './context/AuthContext';
 import { useWishlist } from './context/WishlistContext';
@@ -24,6 +24,7 @@ export const App: React.FC = () => {
   // Data states
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [heroConfig, setHeroConfig] = useState<HeroConfig>(() => dbService.getHeroConfig());
   const [loading, setLoading] = useState(true);
 
   // View state
@@ -53,6 +54,7 @@ export const App: React.FC = () => {
       ]);
       setProducts(fetchedProducts);
       setOrders(fetchedOrders);
+      setHeroConfig(dbService.getHeroConfig());
     } catch (e) {
       console.error('Failed to load database:', e);
     } finally {
@@ -139,6 +141,11 @@ export const App: React.FC = () => {
           <AdminDashboard
             products={products}
             orders={orders}
+            heroConfig={heroConfig}
+            onUpdateHeroConfig={(cfg) => {
+              setHeroConfig(cfg);
+              dbService.saveHeroConfig(cfg);
+            }}
             onRefreshData={loadData}
             onCloseAdmin={() => setCurrentView('shop')}
           />
@@ -152,6 +159,7 @@ export const App: React.FC = () => {
             onOpenProduct={(p) => setDetailProduct(p)}
             onNavigateShop={() => setCurrentView('shop')}
             onOpenAdmin={() => setCurrentView('admin')}
+            onRefreshOrders={loadData}
           />
         )}
 
@@ -161,12 +169,14 @@ export const App: React.FC = () => {
             {/* Hero Banner (Shown when viewing all and not filtering wishlist) */}
             {selectedCategory === 'All' && !showWishlistOnly && (
               <HeroBanner
+                heroConfig={heroConfig}
+                products={products}
                 onExplore={() => {
                   const el = document.getElementById('bag-grid');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
                 onOpenLookbook={() => setIsLookbookOpen(true)}
-                onSelectCategory={(cat) => setSelectedCategory(cat)}
+                onOpenProduct={(p) => setDetailProduct(p)}
               />
             )}
 
@@ -186,7 +196,7 @@ export const App: React.FC = () => {
                       {showWishlistOnly
                         ? 'Saved Favorites'
                         : selectedCategory === 'All'
-                        ? 'All Downtown Baggettes'
+                        ? 'All Atelier Baggettes'
                         : selectedCategory}
                     </h2>
                   </div>
@@ -356,7 +366,7 @@ export const App: React.FC = () => {
                 <div className="max-w-xl">
                   <div className="flex items-center gap-1.5 mb-1.5 text-rosebud-600 text-[10px] sm:text-xs font-mono-tag uppercase tracking-widest">
                     <span>🎀</span>
-                    <span>Studio Dispatch • Lower East Side</span>
+                    <span>Atelier Dispatch • Accra, Ghana</span>
                   </div>
                   <h3 className="font-editorial text-lg sm:text-2xl lg:text-3xl text-ink-900 font-normal leading-snug">
                     "Every bag is an emotional archive. You keep lip balm, a cinema ticket from last July, and a lucky safety pin in it."

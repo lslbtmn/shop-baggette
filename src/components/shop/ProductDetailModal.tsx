@@ -306,7 +306,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   </button>
                   {activeAccordion === 'packaging' && (
                     <div className="pb-3 text-ink-600 leading-relaxed text-[11px] sm:text-xs">
-                      Every bag arrives in our collectible candy-pink cotton dustbag tied with an oversized hand-finished satin bow, accompanied by an archival postcard from our Lower East Side studio.
+                      Every bag arrives in our collectible candy-pink cotton dustbag tied with an oversized hand-finished satin bow, accompanied by an archival postcard from our Accra atelier.
                     </div>
                   )}
                 </div>

@@ -1,5 +1,5 @@
 # BAGGETTE SHOP 🎀
-### *A delicate downtown bag store modelled after sandyliang.info*
+### *A delicate Ghanaian bag boutique based in Accra, Ghana, modelled after sandyliang.info*
 
 Built with **Vite**, **React 18**, **TypeScript**, and **Tailwind CSS**, linked to a **Supabase database** with customer authentication, shopping bag drawer, and a full-featured admin management dashboard.
 
@@ -7,8 +7,8 @@ Built with **Vite**, **React 18**, **TypeScript**, and **Tailwind CSS**, linked 
 
 ## 🌸 Aesthetics & Features (Sandy Liang Inspired)
 
-- **Downtown LES Editorial Aesthetic**: Playfair Display serif typography paired with Courier Prime monospace tags, subtle cream backgrounds, ballet ribbons (`🎀`), and nostalgic Lower East Side street photography.
-- **SS26 Bag Archive**: Curated silhouettes including the *Bacio Satin Baggette with Oversized Bow*, *Orchard Pleated Baggette*, *Ludlow Ballet Puffer Cloud*, *Pierrot Silk Satin Pouch*, and *Chinatown Gingham Utility Tote*.
+- **Accra Atelier Editorial Aesthetic**: Playfair Display serif typography paired with Courier Prime monospace tags, subtle cream backgrounds, ballet ribbons (`🎀`), and nostalgic Accra street & studio photography.
+- **SS26 Bag Archive**: Curated silhouettes including the *Bacio Satin Baggette with Oversized Bow*, *The Osu Pleated Baggette*, *The Cantonments Ballet Puffer Cloud*, *Pierrot Silk Satin Pouch*, and *The Makola Gingham Utility Tote*.
 - **Interactive Product Experience**:
   - Image cross-fade on card hover to reveal styling / editorial angle
   - Colorway swatches with real-time selection
@@ -23,11 +23,13 @@ Built with **Vite**, **React 18**, **TypeScript**, and **Tailwind CSS**, linked 
   - Automatic inventory stock decrementing
   - Celebration confetti burst via `canvas-confetti`
 - **Customer Account Portal**:
-  - Profile status
-  - Recent orders with a 4-step delivery progress tracker (*Placed -> Pink Dustbag -> Dispatched -> Stoop Delivery*)
+  - Profile status with editable shipping address & Ghana Post digital address
+  - Recent orders with a 4-step delivery progress tracker (*Placed -> Pink Dustbag -> Dispatched -> Doorstep Delivery*)
+  - Cancel order with automatic stock restoration and delete order controls
   - Saved Sweethearts Wishlist with 1-click add to cart
 - **Admin Dashboard**:
   - **Metrics Overview**: Gross revenue, order volume, active bag models, and out-of-stock alerts
+  - **Homepage Hero Editor**: Customize the Fig. 01 and Fig. 02 featured bags, banner headline, subtitle, and badge text
   - **Product Catalog Management**: Add new baguettes, edit existing models, upload image URLs, adjust tags and colorways, delete products, and inline (+ / -) inventory stock steppers
   - **Orders & Fulfillment Management**: Live order list with status updates (*Pending*, *Processing*, *Shipped*, *Delivered*, *Cancelled*)
   - **Supabase Database Inspector**: Direct database connection health indicator, step-by-step setup guide, and 1-click SQL copy button
@@ -78,6 +80,6 @@ The application contains a dual-layer data architecture:
 ## 🎀 Quick Test Logins
 Click the **Sign In** button in the header to view 1-click instant login shortcuts:
 - **Admin Director**: `admin@baggetteshop.info` (Grants full access to the Admin Dashboard)
-- **Customer Shopper**: `leslie.shopper@nyc.org` (Shows past orders & saved wishlist items)
+- **Customer Shopper**: `akua.mensah@baggette.gh` (Shows past orders, shipping address & saved wishlist items)
 
 *(Any account email containing `"admin"` automatically receives admin privileges).*

@@ -25,7 +25,7 @@ export const Footer: React.FC = () => {
               <span className="font-editorial text-lg sm:text-xl italic font-medium">Love Notes & Archive Dispatches</span>
             </div>
             <p className="text-xs sm:text-sm text-ink-600 mb-3 sm:mb-4 font-light leading-relaxed">
-              Sign up to receive sweet dispatches from Lower East Side, private salon previews, restock alerts, and limited edition bow charms.
+              Sign up to receive sweet dispatches from our Accra atelier, private salon previews, restock alerts, and limited edition bow charms.
             </p>
             {subscribed ? (
               <div className="flex items-center gap-2 text-xs sm:text-sm text-green-700 bg-green-50 border border-green-200 px-3.5 py-2 sm:py-2.5 rounded-sm font-mono-tag">
@@ -78,7 +78,7 @@ export const Footer: React.FC = () => {
               </li>
               <li>
                 <a href="#stockists" className="hover:text-rosebud-600 transition-colors">
-                  LES Salon & Stockists
+                  Accra Atelier & Stockists
                 </a>
               </li>
               <li>
@@ -95,7 +95,7 @@ export const Footer: React.FC = () => {
               Baggette Studio
             </h4>
             <p className="text-xs text-ink-600 leading-relaxed font-light mb-3">
-              Designed on Orchard Street in Manhattan. Built for city walkers, gallery loafers, and sweet souls who keep mints, lip gloss and poetry in small satin bags.
+              Designed on Oxford Street in Osu, Accra. Built for city walkers, gallery loafers, and sweet souls who keep mints, lip gloss and poetry in small satin bags.
             </p>
             <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono-tag text-ink-500">
               <Sparkles className="w-3.5 h-3.5 text-rosebud-400" />
@@ -107,7 +107,7 @@ export const Footer: React.FC = () => {
         {/* Bottom Banner */}
         <div className="pt-6 sm:pt-8 border-t border-ink-200 flex flex-col sm:flex-row items-center justify-between text-[10px] sm:text-[11px] font-mono-tag text-ink-500 gap-3">
           <div className="flex items-center gap-2 text-center">
-            <span>© 2026 BAGGETTE SHOP NEW YORK.</span>
+            <span>© 2026 BAGGETTE SHOP ACCRA.</span>
             <span>•</span>
             <span>MODELLED AFTER SANDYLIANG.INFO</span>
           </div>

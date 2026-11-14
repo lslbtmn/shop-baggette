@@ -18,8 +18,10 @@ import {
   XCircle,
   LayoutGrid,
   List,
+  Sparkles,
+  Sliders,
 } from 'lucide-react';
-import { Product, Order, ProductCategory, ProductColor } from '../../types';
+import { Product, Order, ProductCategory, ProductColor, HeroConfig } from '../../types';
 import {
   dbService,
   isSupabaseConfigured,
@@ -32,6 +34,8 @@ import { useAuth } from '../../context/AuthContext';
 interface AdminDashboardProps {
   products: Product[];
   orders: Order[];
+  heroConfig: HeroConfig;
+  onUpdateHeroConfig: (config: HeroConfig) => void;
   onRefreshData: () => Promise<void>;
   onCloseAdmin: () => void;
 }
@@ -39,11 +43,13 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   products,
   orders,
+  heroConfig,
+  onUpdateHeroConfig,
   onRefreshData,
   onCloseAdmin,
 }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'database'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'hero' | 'orders' | 'database'>('products');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -52,7 +58,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Form State
+  // Product Form State
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState<ProductCategory>('Baggettes');
   const [formPrice, setFormPrice] = useState(320);
@@ -65,6 +71,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [formImages, setFormImages] = useState('');
   const [formTags, setFormTags] = useState('NEW ARRIVAL');
   const [formColors, setFormColors] = useState('Noir Black:#111111, Ballet Pink:#FAD8DD');
+
+  // Hero Configuration State
+  const [heroForm, setHeroForm] = useState<HeroConfig>(heroConfig);
 
   // Supabase Credentials Settings State
   const credentials = getSupabaseCredentials();
@@ -82,7 +91,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const outOfStockCount = products.filter((p) => p.stock_quantity === 0).length;
   const lowStockCount = products.filter((p) => p.stock_quantity > 0 && p.stock_quantity < 5).length;
 
-  // Run initial diagnostic check if Supabase is configured
+  useEffect(() => {
+    setHeroForm(heroConfig);
+  }, [heroConfig]);
+
   useEffect(() => {
     if (isSupabaseConfigured()) {
       runDiagnostics();
@@ -111,7 +123,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setFormPrice(320);
     setFormComparePrice(undefined);
     setFormStock(12);
-    setFormDescription('Our newest downtown baggette silhouette in lustrous satin.');
+    setFormDescription('Our newest silhouette handcrafted in lustrous duchess satin in our Accra atelier.');
     setFormMaterials('Duchess Satin & Palladium hardware');
     setFormDimensions('10.0" W x 5.0" H x 2.5" D');
     setFormCare('Spot clean with dry cloth.');
@@ -196,7 +208,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       created_at: editingProduct?.created_at || new Date().toISOString(),
     };
 
-    // Save with full error checking
     const res = await dbService.upsertProduct(newProduct);
     await onRefreshData();
     setIsProductModalOpen(false);
@@ -241,6 +252,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleSaveHero = (e: React.FormEvent) => {
+    e.preventDefault();
+    dbService.saveHeroConfig(heroForm);
+    onUpdateHeroConfig(heroForm);
+    showBanner('Homepage Hero Banner updated successfully! 🎀', 'success');
+  };
+
   const handleSeedAllToSupabase = async () => {
     const res = await dbService.seedAllToSupabase();
     if (res.error) {
@@ -280,28 +298,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleCopySql = () => {
     const sql = `-- RUN THIS IN YOUR SUPABASE SQL EDITOR TO FIX ALL RLS PERMISSIONS & SEED:
--- 1. Products Table Permissive RLS
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for all users" ON public.products;
-DROP POLICY IF EXISTS "Admins can insert products" ON public.products;
-DROP POLICY IF EXISTS "Admins can update products" ON public.products;
-DROP POLICY IF EXISTS "Admins can delete products" ON public.products;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.products;
-
-CREATE POLICY "Enable read access for all users" ON public.products FOR SELECT USING (true);
 CREATE POLICY "Enable all access for all users" ON public.products FOR ALL USING (true) WITH CHECK (true);
 
--- 2. Profiles Table & Trigger
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Profiles permit all select" ON public.profiles;
-DROP POLICY IF EXISTS "Profiles permit all insert" ON public.profiles;
-DROP POLICY IF EXISTS "Profiles permit all update" ON public.profiles;
-
 CREATE POLICY "Profiles permit all select" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Profiles permit all insert" ON public.profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Profiles permit all update" ON public.profiles FOR UPDATE USING (true);
 
--- 3. Orders Table
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Orders permit all" ON public.orders;
 CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHECK (true);
@@ -322,7 +328,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
           <div className="flex items-center gap-2">
             <span className="text-sm">🎀</span>
             <span className="text-[10px] sm:text-xs font-mono-tag uppercase tracking-[0.25em] text-ink-500">
-              Operations & Database Control
+              Accra Atelier • Management Portal
             </span>
           </div>
           <h1 className="font-editorial text-2xl sm:text-3xl lg:text-4xl text-ink-900">
@@ -372,15 +378,15 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
         </div>
       )}
 
-      {/* Database Diagnostic Notice if RLS write is blocked */}
+      {/* Database Diagnostic Notice */}
       {diagResult && !diagResult.canInsertProduct && (
         <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-sm text-xs font-mono-tag text-amber-900 space-y-2">
           <div className="flex items-center gap-2 font-bold text-amber-800">
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
-            <span>Supabase RLS Policy Warning: Writes to database are currently blocked by Row Level Security!</span>
+            <span>Supabase RLS Warning: Database writes currently blocked by Row Level Security</span>
           </div>
           <p className="text-[11px] text-amber-800 leading-relaxed">
-            Your Supabase tables exist, but PostgreSQL RLS is rejecting inserts. To enable adding/editing bags and placing orders in Supabase, run the one-click permissive SQL snippet in your Supabase SQL editor:
+            Copy and run the 1-click permissive SQL script into your Supabase SQL editor to enable real-time writes.
           </p>
           <button
             onClick={handleCopySql}
@@ -403,7 +409,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
             ${totalRevenue.toLocaleString()}
           </div>
           <p className="text-[9px] sm:text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">
-            {orders.length} orders
+            {orders.length} orders placed
           </p>
         </div>
 
@@ -422,20 +428,20 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
 
         <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
           <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
-            <span>Bag Models</span>
+            <span>Bag Silhouettes</span>
             <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-ink-600" />
           </div>
           <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
             {products.length}
           </div>
           <p className="text-[9px] sm:text-[10px] font-mono-tag text-ink-400 mt-0.5 truncate">
-            Active catalog entries
+            Active catalog styles
           </p>
         </div>
 
         <div className="bg-white/80 border border-ink-200 p-3.5 sm:p-5 rounded-sm">
           <div className="flex items-center justify-between text-ink-500 text-[10px] sm:text-xs font-mono-tag uppercase">
-            <span>Inventory Alert</span>
+            <span>Stock Alerts</span>
             <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
           </div>
           <div className="font-editorial text-xl sm:text-2xl lg:text-3xl font-bold text-ink-900 mt-1 sm:mt-2">
@@ -447,7 +453,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
         </div>
       </div>
 
-      {/* Tabs Bar (Scrollable on mobile) */}
+      {/* Tabs Bar */}
       <div className="flex border-b border-ink-200 mb-6 text-xs font-mono-tag uppercase tracking-wider overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('products')}
@@ -459,6 +465,17 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
         >
           <Package className="w-4 h-4 flex-shrink-0" />
           <span>Products ({products.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('hero')}
+          className={`pb-3 px-3 sm:px-4 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+            activeTab === 'hero'
+              ? 'border-b-2 border-ink-900 font-bold text-ink-900'
+              : 'text-ink-500 hover:text-ink-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 flex-shrink-0 text-rosebud-500" />
+          <span>Homepage Hero Editor</span>
         </button>
         <button
           onClick={() => setActiveTab('orders')}
@@ -487,7 +504,6 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
       {/* TAB 1: PRODUCT CATALOG */}
       {activeTab === 'products' && (
         <div className="space-y-4">
-          {/* Controls: Search, Filter, View Toggler, Add */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 sm:gap-3">
             <div className="flex items-center gap-2 flex-1">
               <div className="relative flex-1">
@@ -515,7 +531,6 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
             </div>
 
             <div className="flex items-center gap-2 justify-between sm:justify-end">
-              {/* View Mode Toggler (Cards vs Table) */}
               <div className="flex items-center border border-ink-200 rounded-sm bg-cream-100 p-0.5 text-ink-600">
                 <button
                   type="button"
@@ -549,7 +564,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
             </div>
           </div>
 
-          {/* VIEW MODE A: RESPONSIVE CARDS (Ideal on mobile screens) */}
+          {/* Cards View */}
           {viewMode === 'cards' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {filteredProducts.map((p) => (
@@ -576,7 +591,6 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-ink-100">
-                      {/* Inventory Stepper */}
                       <div className="flex items-center gap-1.5 text-xs font-mono-tag">
                         <span className="text-[10px] text-ink-500">Stock:</span>
                         <div className="flex items-center border border-ink-200 rounded-xs bg-cream-50 px-1">
@@ -602,7 +616,6 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
                         </div>
                       </div>
 
-                      {/* Edit / Delete */}
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => openEditProductModal(p)}
@@ -626,7 +639,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
             </div>
           )}
 
-          {/* VIEW MODE B: DESKTOP TABLE */}
+          {/* Table View */}
           {viewMode === 'table' && (
             <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-2xs">
               <table className="w-full text-left text-xs font-mono-tag min-w-[650px]">
@@ -708,7 +721,157 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
         </div>
       )}
 
-      {/* TAB 2: CUSTOMER ORDERS */}
+      {/* TAB 2: HOMEPAGE HERO EDITOR */}
+      {activeTab === 'hero' && (
+        <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-6">
+          <div className="border-b border-ink-200 pb-3">
+            <h3 className="font-editorial text-lg text-ink-900">
+              Customize Homepage Hero & Featured Bag Silhouettes
+            </h3>
+            <p className="text-xs font-mono-tag text-ink-500">
+              Control the headline, curatorial text, and select which 2 bags are featured in the hero collage.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveHero} className="space-y-4 text-xs font-mono-tag">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block uppercase text-ink-600 mb-1">Badge Tag</label>
+                <input
+                  type="text"
+                  value={heroForm.badgeText}
+                  onChange={(e) => setHeroForm({ ...heroForm, badgeText: e.target.value })}
+                  placeholder="e.g. Spring/Summer 2026 Collection"
+                  className="w-full bg-cream-50 border border-ink-300 px-3 py-2 rounded-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block uppercase text-ink-600 mb-1">Hero Main Title</label>
+                <input
+                  type="text"
+                  value={heroForm.title}
+                  onChange={(e) => setHeroForm({ ...heroForm, title: e.target.value })}
+                  className="w-full bg-cream-50 border border-ink-300 px-3 py-2 rounded-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block uppercase text-ink-600 mb-1">Hero Subheading & Atelier Note</label>
+              <textarea
+                rows={2}
+                value={heroForm.subtitle}
+                onChange={(e) => setHeroForm({ ...heroForm, subtitle: e.target.value })}
+                className="w-full bg-cream-50 border border-ink-300 px-3 py-2 rounded-sm"
+              />
+            </div>
+
+            {/* Featured Product Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-ink-100">
+              {/* Fig 01 Selection */}
+              <div className="bg-cream-50 p-4 border border-ink-200 rounded-sm space-y-3">
+                <span className="font-bold text-ink-900 uppercase">Fig. 01 Featured Bag (Left Card)</span>
+                <div>
+                  <label className="block text-ink-500 mb-1">Select Bag Silhouette:</label>
+                  <select
+                    value={heroForm.fig1ProductId}
+                    onChange={(e) => setHeroForm({ ...heroForm, fig1ProductId: e.target.value })}
+                    className="w-full bg-white border border-ink-300 px-3 py-1.5 rounded-sm"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (${p.price})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-ink-500 mb-1">Card Caption Label:</label>
+                  <input
+                    type="text"
+                    value={heroForm.fig1Caption}
+                    onChange={(e) => setHeroForm({ ...heroForm, fig1Caption: e.target.value })}
+                    placeholder="e.g. Fig. 01 — Osu Atelier"
+                    className="w-full bg-white border border-ink-300 px-3 py-1.5 rounded-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Fig 02 Selection */}
+              <div className="bg-cream-50 p-4 border border-ink-200 rounded-sm space-y-3">
+                <span className="font-bold text-ink-900 uppercase">Fig. 02 Featured Bag (Right Card)</span>
+                <div>
+                  <label className="block text-ink-500 mb-1">Select Bag Silhouette:</label>
+                  <select
+                    value={heroForm.fig2ProductId}
+                    onChange={(e) => setHeroForm({ ...heroForm, fig2ProductId: e.target.value })}
+                    className="w-full bg-white border border-ink-300 px-3 py-1.5 rounded-sm"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (${p.price})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-ink-500 mb-1">Card Caption Label:</label>
+                  <input
+                    type="text"
+                    value={heroForm.fig2Caption}
+                    onChange={(e) => setHeroForm({ ...heroForm, fig2Caption: e.target.value })}
+                    placeholder="e.g. Fig. 02 — Cantonments Walk"
+                    className="w-full bg-white border border-ink-300 px-3 py-1.5 rounded-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Micro Atelier Notes */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div>
+                <label className="block uppercase text-ink-500 mb-1 text-[10px]">Bullet 1</label>
+                <input
+                  type="text"
+                  value={heroForm.note1}
+                  onChange={(e) => setHeroForm({ ...heroForm, note1: e.target.value })}
+                  className="w-full bg-cream-50 border border-ink-300 px-2.5 py-1.5 rounded-sm text-[11px]"
+                />
+              </div>
+              <div>
+                <label className="block uppercase text-ink-500 mb-1 text-[10px]">Bullet 2</label>
+                <input
+                  type="text"
+                  value={heroForm.note2}
+                  onChange={(e) => setHeroForm({ ...heroForm, note2: e.target.value })}
+                  className="w-full bg-cream-50 border border-ink-300 px-2.5 py-1.5 rounded-sm text-[11px]"
+                />
+              </div>
+              <div>
+                <label className="block uppercase text-ink-500 mb-1 text-[10px]">Bullet 3</label>
+                <input
+                  type="text"
+                  value={heroForm.note3}
+                  onChange={(e) => setHeroForm({ ...heroForm, note3: e.target.value })}
+                  className="w-full bg-cream-50 border border-ink-300 px-2.5 py-1.5 rounded-sm text-[11px]"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-ink-200 flex justify-end">
+              <button
+                type="submit"
+                className="bg-ink-900 text-cream-50 px-6 py-2.5 text-xs font-mono-tag uppercase tracking-wider rounded-sm hover:bg-rosebud-600 transition-colors shadow-2xs"
+              >
+                Save Hero Banner
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* TAB 3: CUSTOMER ORDERS */}
       {activeTab === 'orders' && (
         <div className="bg-white/80 border border-ink-200 rounded-sm overflow-x-auto shadow-2xs">
           <table className="w-full text-left text-xs font-mono-tag min-w-[650px]">
@@ -775,10 +938,9 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
         </div>
       )}
 
-      {/* TAB 3: SUPABASE DATABASE SYNC & DIAGNOSTICS */}
+      {/* TAB 4: SUPABASE SYNC */}
       {activeTab === 'database' && (
         <div className="space-y-6">
-          {/* Diagnostic Status Card */}
           <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-ink-100">
               <div className="flex items-center gap-3">
@@ -822,7 +984,6 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
               </div>
             </div>
 
-            {/* Diagnostic Table */}
             {diagResult && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono-tag pt-2">
                 <div className="p-2.5 bg-cream-50 border border-ink-200 rounded-xs flex items-center justify-between">
@@ -859,15 +1020,9 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
                 </div>
               </div>
             )}
-
-            {diagResult?.details && (
-              <p className="text-[11px] font-mono-tag text-ink-600 bg-cream-100 p-2.5 rounded-sm">
-                Status: {diagResult.details}
-              </p>
-            )}
           </div>
 
-          {/* Supabase Dynamic Credentials Editor */}
+          {/* Credentials Editor */}
           <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-3">
             <div className="flex items-center gap-2 font-bold text-xs font-mono-tag uppercase text-ink-900">
               <Key className="w-4 h-4" />
@@ -912,44 +1067,10 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
               </button>
             </div>
           </div>
-
-          {/* SQL Script Quick Copy */}
-          <div className="bg-white/80 border border-ink-200 p-4 sm:p-6 rounded-sm shadow-2xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-xs font-mono-tag uppercase tracking-wider text-ink-800 font-bold">
-                1-Click Permissive SQL Script (Run in Supabase SQL Editor)
-              </span>
-              <button
-                onClick={handleCopySql}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-ink-900 text-cream-50 text-xs font-mono-tag rounded-sm hover:bg-rosebud-600 transition-colors shadow-2xs"
-              >
-                {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedSql ? 'Copied to Clipboard!' : 'Copy SQL Script'}</span>
-              </button>
-            </div>
-            <pre className="bg-ink-900 text-cream-100 p-3 sm:p-4 rounded-sm text-[10px] sm:text-[11px] font-mono overflow-x-auto max-h-48">
-{`-- Products Table Permissive Policy
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Enable all access for all users" ON public.products;
-CREATE POLICY "Enable all access for all users" ON public.products FOR ALL USING (true) WITH CHECK (true);
-
--- Profiles Table Permissive Policy
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Profiles permit all select" ON public.profiles;
-CREATE POLICY "Profiles permit all select" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Profiles permit all insert" ON public.profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "Profiles permit all update" ON public.profiles FOR UPDATE USING (true);
-
--- Orders Table Permissive Policy
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Orders permit all" ON public.orders;
-CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHECK (true);`}
-            </pre>
-          </div>
         </div>
       )}
 
-      {/* PRODUCT ADD/EDIT MODAL (Fully Responsive) */}
+      {/* Add/Edit Product Modal */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
@@ -965,7 +1086,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
                     {editingProduct ? 'Edit Baguette Silhouette' : 'Add New Baguette to Catalog'}
                   </h3>
                   <p className="text-[11px] font-mono-tag text-ink-500">
-                    Modelled with Sandy Liang downtown aesthetic
+                    Accra Atelier Collection
                   </p>
                 </div>
                 <button
@@ -984,7 +1105,7 @@ CREATE POLICY "Orders permit all" ON public.orders FOR ALL USING (true) WITH CHE
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. The Orchard Pleated Baggette"
+                    placeholder="e.g. The Osu Pleated Baggette"
                     className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 rounded-sm focus:outline-none focus:border-ink-900"
                   />
                 </div>

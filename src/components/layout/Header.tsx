@@ -57,11 +57,11 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Top Ticker (Collapsible / Compact on mobile) */}
         <div className="bg-ink-900 text-cream-100 text-[10px] sm:text-[11px] font-mono-tag tracking-wider py-1 sm:py-1.5 overflow-hidden border-b border-ink-800">
           <div className="animate-ticker">
-            <span className="mx-4 sm:mx-6">🎀 BAGGETTE SHOP • LOWER EAST SIDE NYC</span>
+            <span className="mx-4 sm:mx-6">🎀 BAGGETTE SHOP • ACCRA, GHANA</span>
             <span className="mx-4 sm:mx-6">• COMPLIMENTARY MESSENGER SHIPPING OVER $250</span>
             <span className="mx-4 sm:mx-6">🎀 SS26 DELICATE UTILITY DROP AVAILABLE NOW</span>
             <span className="mx-4 sm:mx-6">• SIGNATURE CANDY-PINK BOW PACKAGING</span>
-            <span className="mx-4 sm:mx-6">🎀 BAGGETTE SHOP • LOWER EAST SIDE NYC</span>
+            <span className="mx-4 sm:mx-6">🎀 BAGGETTE SHOP • ACCRA, GHANA</span>
             <span className="mx-4 sm:mx-6">• COMPLIMENTARY MESSENGER SHIPPING OVER $250</span>
           </div>
         </div>
@@ -156,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 </div>
                 <p className="hidden sm:block text-[9px] font-mono-tag tracking-[0.3em] text-ink-500 uppercase mt-0.5">
-                  NEW YORK • SANDY LIANG INSPIRED
+                  ACCRA, GHANA • ATELIER DELICATES
                 </p>
               </div>
             </div>
@@ -416,7 +416,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Drawer Bottom Info */}
             <div className="p-5 border-t border-ink-200 bg-cream-100/50 text-[11px] font-mono-tag text-ink-500 space-y-2">
               <div className="flex items-center justify-between">
-                <span>Lower East Side, NYC</span>
+                <span>Osu Atelier, Accra, Ghana</span>
                 <span>🎀 SS26</span>
               </div>
               {user && (

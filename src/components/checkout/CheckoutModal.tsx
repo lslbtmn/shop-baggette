@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { X, CheckCircle, ShieldCheck, ArrowRight, Truck, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, ArrowRight, Sparkles, MapPin, Phone } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { dbService } from '../../lib/supabase';
-import { Order } from '../../types';
+import { Order, ShippingAddress } from '../../types';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -18,20 +18,41 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   onOrderComplete,
 }) => {
   const { items, subtotal, shipping, discount, total, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, updateUserProfile } = useAuth();
 
-  const [email, setEmail] = useState(user?.email || 'shopper@downtown.nyc');
-  const [name, setName] = useState(user?.full_name || 'Chloe S.');
-  const [address, setAddress] = useState('142 Orchard St, Apt 4B');
-  const [city, setCity] = useState('New York');
-  const [state, setState] = useState('NY');
-  const [zip, setZip] = useState('10002');
+  const [email, setEmail] = useState(user?.email || 'shopper@baggette.com.gh');
+  const [name, setName] = useState(user?.full_name || 'Ama Mensah');
+  const [phone, setPhone] = useState(user?.phone || user?.shipping_address?.phone || '+233 24 123 4567');
+  const [address, setAddress] = useState(user?.shipping_address?.address || '14 Ring Road Central, Osu');
+  const [city, setCity] = useState(user?.shipping_address?.city || 'Accra');
+  const [region, setRegion] = useState(user?.shipping_address?.state || 'Greater Accra');
+  const [digitalCode, setDigitalCode] = useState(user?.shipping_address?.zip || 'GA-042-8821');
+  const [country, setCountry] = useState(user?.shipping_address?.country || 'Ghana');
+  const [saveToProfile, setSaveToProfile] = useState(true);
+
   const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4242');
   const [cardExp, setCardExp] = useState('08/28');
   const [cardCvc, setCardCvc] = useState('888');
 
   const [loading, setLoading] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
+
+  // Sync state if user changes
+  useEffect(() => {
+    if (user) {
+      if (user.email) setEmail(user.email);
+      if (user.full_name) setName(user.full_name);
+      if (user.phone) setPhone(user.phone);
+      if (user.shipping_address) {
+        setAddress(user.shipping_address.address);
+        setCity(user.shipping_address.city);
+        setRegion(user.shipping_address.state);
+        setDigitalCode(user.shipping_address.zip);
+        setCountry(user.shipping_address.country);
+        if (user.shipping_address.phone) setPhone(user.shipping_address.phone);
+      }
+    }
+  }, [user]);
 
   if (!isOpen) return null;
 
@@ -41,20 +62,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     try {
       const orderId = 'BGT-' + Math.floor(1000 + Math.random() * 9000);
-      const tracking = 'BGT-USPS-' + Math.floor(100000000000 + Math.random() * 900000000000);
+      const tracking = 'BGT-ACCRA-' + Math.floor(100000 + Math.random() * 900000);
+
+      const shippingObj: ShippingAddress = {
+        address,
+        city,
+        state: region,
+        zip: digitalCode,
+        country,
+        phone,
+      };
 
       const newOrder: Order = {
         id: orderId,
         user_id: user?.id,
         customer_email: email,
         customer_name: name,
-        shipping_address: {
-          address,
-          city,
-          state,
-          zip,
-          country: 'United States',
-        },
+        shipping_address: shippingObj,
         items: items.map((i) => ({
           product_id: i.product.id,
           product_name: i.product.name,
@@ -75,7 +99,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       // Save to database
       await dbService.createOrder(newOrder);
 
-      // Trigger Confetti Celebration!
+      // If requested, save this address to profile
+      if (saveToProfile && user) {
+        updateUserProfile({
+          full_name: name,
+          phone,
+          shipping_address: shippingObj,
+        });
+      }
+
+      // Confetti celebration
       try {
         confetti({
           particleCount: 100,
@@ -122,10 +155,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   Order Successfully Placed
                 </span>
                 <h2 className="font-editorial text-2xl sm:text-3xl lg:text-4xl text-ink-900 mt-2">
-                  Thank you for your order, {confirmedOrder.customer_name}!
+                  Medaase, {confirmedOrder.customer_name}!
                 </h2>
                 <p className="text-xs font-mono-tag text-ink-600 max-w-md mx-auto">
-                  We are preparing your bags in our signature candy-pink dustbags tied with double grosgrain ribbons.
+                  We are hand-wrapping your baguettes in our signature candy-pink dustbag tied with double grosgrain ribbons at our Accra atelier.
                 </p>
               </div>
 
@@ -140,8 +173,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <span className="text-rosebud-700 font-bold">{confirmedOrder.status} 🎀</span>
                 </div>
                 <div className="flex justify-between border-b border-ink-200 pb-2">
-                  <span className="text-ink-500">Tracking Code:</span>
+                  <span className="text-ink-500">Rider / Tracking Code:</span>
                   <span className="text-ink-900 truncate max-w-[170px]">{confirmedOrder.tracking_number}</span>
+                </div>
+                <div className="flex justify-between border-b border-ink-200 pb-2">
+                  <span className="text-ink-500">Delivery Destination:</span>
+                  <span className="text-ink-900 font-medium">{confirmedOrder.shipping_address.city}, {confirmedOrder.shipping_address.state}</span>
                 </div>
                 <div className="flex justify-between pt-1">
                   <span className="text-ink-500">Total Charged:</span>
@@ -165,11 +202,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="text-sm">🎀</span>
                   <span className="text-[10px] sm:text-xs font-mono-tag uppercase tracking-[0.25em] text-ink-500">
-                    Secure Checkout
+                    Secure Checkout • Accra Dispatch
                   </span>
                 </div>
                 <h2 className="font-editorial text-xl sm:text-2xl text-ink-900">
-                  Deliver to Your Stoop
+                  Deliver to Your Doorstep
                 </h2>
               </div>
 
@@ -193,86 +230,118 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                           className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
-                          Email for Delivery Updates
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
+                            Phone (Dispatch Rider Updates)
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="+233 24 123 4567"
+                            className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-2 border-t border-ink-100">
                     <h3 className="text-xs font-mono-tag uppercase tracking-wider text-ink-900 font-bold mb-2">
-                      2. Delivery Address
+                      2. Delivery Address (Ghana or Worldwide)
                     </h3>
                     <div className="space-y-2.5">
                       <div>
                         <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
-                          Street Address / Apt
+                          Street / House / Landmark Address
                         </label>
                         <input
                           type="text"
                           required
                           value={address}
                           onChange={(e) => setAddress(e.target.value)}
+                          placeholder="e.g. 14 Ring Road Central, near Danquah Circle"
                           className="w-full bg-cream-100 border border-ink-300 px-3 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
                         />
                       </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div>
                           <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
-                            City
+                            City / Area
                           </label>
                           <input
                             type="text"
                             required
                             value={city}
                             onChange={(e) => setCity(e.target.value)}
+                            placeholder="e.g. Osu, Accra"
                             className="w-full bg-cream-100 border border-ink-300 px-2.5 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
                           />
                         </div>
                         <div>
                           <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
-                            State
+                            Region
                           </label>
                           <input
                             type="text"
                             required
-                            value={state}
-                            onChange={(e) => setState(e.target.value)}
+                            value={region}
+                            onChange={(e) => setRegion(e.target.value)}
+                            placeholder="e.g. Greater Accra"
                             className="w-full bg-cream-100 border border-ink-300 px-2.5 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
                           />
                         </div>
                         <div>
                           <label className="block text-[10px] sm:text-[11px] font-mono-tag uppercase text-ink-500 mb-1">
-                            Zip Code
+                            Digital Address
                           </label>
                           <input
                             type="text"
-                            required
-                            value={zip}
-                            onChange={(e) => setZip(e.target.value)}
-                            className="w-full bg-cream-100 border border-ink-300 px-2.5 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900"
+                            value={digitalCode}
+                            onChange={(e) => setDigitalCode(e.target.value)}
+                            placeholder="GA-042-8821"
+                            className="w-full bg-cream-100 border border-ink-300 px-2.5 py-1.5 sm:py-2 text-xs font-mono-tag rounded-sm focus:outline-none focus:border-ink-900 uppercase"
                           />
                         </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="saveAddress"
+                          checked={saveToProfile}
+                          onChange={(e) => setSaveToProfile(e.target.checked)}
+                          className="accent-ink-900 rounded-sm"
+                        />
+                        <label htmlFor="saveAddress" className="text-[11px] font-mono-tag text-ink-600 cursor-pointer">
+                          Save this shipping address to my profile
+                        </label>
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-2 border-t border-ink-100">
                     <h3 className="text-xs font-mono-tag uppercase tracking-wider text-ink-900 font-bold mb-2">
-                      3. Payment Simulation
+                      3. Payment Simulation (Cards & Mobile Money)
                     </h3>
                     <div className="bg-cream-100 p-3 border border-ink-200 rounded-sm space-y-2">
                       <div className="flex items-center justify-between text-xs font-mono-tag text-ink-700">
-                        <span>Card Number</span>
+                        <span>Card / MoMo Simulator</span>
                         <span className="text-[10px] text-ink-400">Encrypted Sandbox</span>
                       </div>
                       <input
@@ -366,7 +435,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       )}
                     </button>
                     <p className="text-[10px] font-mono-tag text-ink-400 text-center">
-                      *Includes custom dustbag, stickers, and ribbon wrapping.
+                      *Hand-wrapped in our signature pink dustbag with bows in Accra.
                     </p>
                   </div>
                 </div>

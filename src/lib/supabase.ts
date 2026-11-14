@@ -1,10 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Product, Order, UserProfile } from '../types';
-import { INITIAL_PRODUCTS, SAMPLE_ORDERS } from './mockData';
+import { Product, Order, UserProfile, HeroConfig } from '../types';
+import { INITIAL_PRODUCTS, SAMPLE_ORDERS, DEFAULT_HERO_CONFIG } from './mockData';
 
 // Config storage keys
 const SUPABASE_URL_KEY = 'baggette_supabase_url_custom';
 const SUPABASE_KEY_KEY = 'baggette_supabase_key_custom';
+const HERO_CONFIG_KEY = 'baggette_hero_config_v1';
 
 export const getSupabaseCredentials = () => {
   const customUrl = typeof window !== 'undefined' ? localStorage.getItem(SUPABASE_URL_KEY) : null;
@@ -57,7 +58,7 @@ export const setSupabaseCredentials = (url: string, key: string) => {
     localStorage.setItem(SUPABASE_URL_KEY, url.trim());
     localStorage.setItem(SUPABASE_KEY_KEY, key.trim());
   }
-  currentClient = null; // Forces re-instantiation
+  currentClient = null;
   return getSupabaseClient();
 };
 
@@ -72,7 +73,7 @@ export const resetSupabaseCredentials = () => {
 
 export const supabase = getSupabaseClient();
 
-// --- LOCAL PERSISTENCE LAYER (FALLBACK & SEED STORE) ---
+// --- LOCAL PERSISTENCE LAYER ---
 const PRODUCTS_STORAGE_KEY = 'baggette_products_v1';
 const ORDERS_STORAGE_KEY = 'baggette_orders_v1';
 
@@ -120,7 +121,26 @@ export const saveStoredOrders = (orders: Order[]) => {
   }
 };
 
-// --- DATABASE SERVICE API (HYBRID: SUPABASE IF CONFIGURED, ELSE REACTIVE LOCALSTORE) ---
+export const getStoredHeroConfig = (): HeroConfig => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(HERO_CONFIG_KEY) : null;
+    return raw ? JSON.parse(raw) : DEFAULT_HERO_CONFIG;
+  } catch {
+    return DEFAULT_HERO_CONFIG;
+  }
+};
+
+export const saveStoredHeroConfig = (config: HeroConfig) => {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(HERO_CONFIG_KEY, JSON.stringify(config));
+    }
+  } catch (e) {
+    console.error('Error saving hero config:', e);
+  }
+};
+
+// --- DATABASE SERVICE API ---
 
 export const dbService = {
   // Fetch Products
@@ -134,7 +154,6 @@ export const dbService = {
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
-          // Sync local storage with live database so offline fallback is up to date
           saveStoredProducts(data as Product[]);
           return data as Product[];
         }
@@ -150,7 +169,6 @@ export const dbService = {
 
   // Save / Upsert Product
   async upsertProduct(product: Product): Promise<{ success: boolean; product: Product; error?: string; inDatabase?: boolean }> {
-    // 1. Always update local storage first so UI updates immediately
     const localProducts = getStoredProducts();
     const existingIndex = localProducts.findIndex((p) => p.id === product.id);
     let updatedList: Product[];
@@ -163,7 +181,6 @@ export const dbService = {
     }
     saveStoredProducts(updatedList);
 
-    // 2. Sync to Supabase
     const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
@@ -244,7 +261,6 @@ export const dbService = {
     const client = getSupabaseClient();
     if (isSupabaseConfigured()) {
       try {
-        // Safe user_id formatting (accepts valid UUID or sets null for guest to avoid PostgreSQL 22P02 error)
         const isUUID = order.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(order.user_id);
         const orderPayload = {
           ...order,
@@ -267,7 +283,6 @@ export const dbService = {
       const orderItem = order.items.find((item) => item.product_id === p.id);
       if (orderItem) {
         const newStock = Math.max(0, p.stock_quantity - orderItem.quantity);
-        // also sync stock decrement to database
         if (isSupabaseConfigured()) {
           client.from('products').update({ stock_quantity: newStock }).eq('id', p.id).then();
         }
@@ -302,6 +317,105 @@ export const dbService = {
       }
     }
     return { success: true };
+  },
+
+  // Cancel Order by User (restores inventory stock)
+  async cancelOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+    const orders = getStoredOrders();
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return { success: false, error: 'Order not found' };
+
+    // Update status to Cancelled
+    const updatedOrders = orders.map((o) => (o.id === orderId ? { ...o, status: 'Cancelled' as Order['status'] } : o));
+    saveStoredOrders(updatedOrders);
+
+    // Restore stock
+    const products = getStoredProducts();
+    const updatedProducts = products.map((p) => {
+      const item = targetOrder.items.find((i) => i.product_id === p.id);
+      if (item) {
+        return { ...p, stock_quantity: p.stock_quantity + item.quantity };
+      }
+      return p;
+    });
+    saveStoredProducts(updatedProducts);
+
+    // Sync to Supabase
+    const client = getSupabaseClient();
+    if (isSupabaseConfigured()) {
+      try {
+        await client.from('orders').update({ status: 'Cancelled' }).eq('id', orderId);
+        // restore product stock in Supabase
+        for (const item of targetOrder.items) {
+          const product = updatedProducts.find((p) => p.id === item.product_id);
+          if (product) {
+            await client.from('products').update({ stock_quantity: product.stock_quantity }).eq('id', product.id);
+          }
+        }
+      } catch (e: any) {
+        console.error('Error syncing order cancellation to Supabase:', e);
+      }
+    }
+
+    return { success: true };
+  },
+
+  // Delete Order Record (Customer or Admin)
+  async deleteOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+    const currentOrders = getStoredOrders().filter((o) => o.id !== orderId);
+    saveStoredOrders(currentOrders);
+
+    const client = getSupabaseClient();
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await client.from('orders').delete().eq('id', orderId);
+        if (error) {
+          console.error('Supabase delete order error:', error);
+          return { success: false, error: error.message };
+        }
+      } catch (e: any) {
+        console.error('Supabase delete order error:', e);
+        return { success: false, error: e.message };
+      }
+    }
+    return { success: true };
+  },
+
+  // Update Profile Details (Full Name, Phone, Shipping Address)
+  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<{ success: boolean; error?: string }> {
+    const client = getSupabaseClient();
+    if (isSupabaseConfigured() && userId && !userId.startsWith('usr_')) {
+      try {
+        const { error } = await client
+          .from('profiles')
+          .update({
+            full_name: updates.full_name,
+            phone: updates.phone,
+            shipping_address: updates.shipping_address,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
+
+        if (error) {
+          console.error('Error updating Supabase profile:', error);
+          return { success: false, error: error.message };
+        }
+      } catch (e: any) {
+        console.error('Profile update exception:', e);
+        return { success: false, error: e.message };
+      }
+    }
+    return { success: true };
+  },
+
+  // Hero Configuration API
+  getHeroConfig(): HeroConfig {
+    return getStoredHeroConfig();
+  },
+
+  saveHeroConfig(config: HeroConfig) {
+    saveStoredHeroConfig(config);
+    return config;
   },
 
   // Seed / Sync All Initial Products into Supabase
@@ -348,19 +462,15 @@ export const dbService = {
     }
 
     try {
-      // 1. Check products select
       const { data: prodData, error: prodErr } = await client.from('products').select('id').limit(1);
       const productsOk = !prodErr;
 
-      // 2. Check profiles
       const { error: profErr } = await client.from('profiles').select('id').limit(1);
       const profilesOk = !profErr;
 
-      // 3. Check orders
       const { error: ordErr } = await client.from('orders').select('id').limit(1);
       const ordersOk = !ordErr;
 
-      // 4. Test insert / write permission
       const testId = 'test-ping-' + Date.now().toString(36);
       const testItem = {
         id: testId,
@@ -378,7 +488,6 @@ export const dbService = {
       const { error: insertErr } = await client.from('products').insert([testItem]);
       let canInsertProduct = !insertErr;
       if (canInsertProduct) {
-        // Clean up test item
         await client.from('products').delete().eq('id', testId);
       }
 

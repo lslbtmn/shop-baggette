@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile } from '../types';
-import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
+import { UserProfile, ShippingAddress } from '../types';
+import { getSupabaseClient, isSupabaseConfigured, dbService } from '../lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -10,6 +10,7 @@ interface AuthContextType {
   signIn: (email: string, password?: string) => Promise<{ error?: string }>;
   signUp: (email: string, password?: string, fullName?: string) => Promise<{ error?: string; message?: string }>;
   signOut: () => Promise<void>;
+  updateUserProfile: (details: Partial<UserProfile>) => Promise<{ success: boolean; error?: string }>;
   demoAdminLogin: () => void;
   demoCustomerLogin: () => void;
   refreshUser: () => Promise<void>;
@@ -27,7 +28,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchProfileAndSetUser = async (sessionUser: any) => {
     const client = getSupabaseClient();
     try {
-      // 1. Try to fetch existing profile
       const { data: profile } = await client
         .from('profiles')
         .select('*')
@@ -38,8 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const fallbackRole: 'admin' | 'customer' = userEmail.toLowerCase().includes('admin') || sessionUser.user_metadata?.role === 'admin' ? 'admin' : 'customer';
       const role = profile?.role || fallbackRole;
       const fullName = profile?.full_name || sessionUser.user_metadata?.full_name || userEmail.split('@')[0] || 'Valued Shopper';
+      const phone = profile?.phone || sessionUser.user_metadata?.phone;
+      const shipping_address = profile?.shipping_address || sessionUser.user_metadata?.shipping_address;
 
-      // 2. If profile row is missing, create/upsert it so database stays synchronized
       if (!profile) {
         try {
           await client.from('profiles').upsert([
@@ -48,6 +49,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: userEmail,
               full_name: fullName,
               role: role,
+              phone: phone,
+              shipping_address: shipping_address,
             },
           ]);
         } catch (insertErr) {
@@ -59,7 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: sessionUser.id,
         email: userEmail,
         full_name: fullName,
+        phone: phone,
         role: role,
+        shipping_address: shipping_address,
         created_at: sessionUser.created_at || new Date().toISOString(),
       };
 
@@ -68,7 +73,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return loggedInUser;
     } catch (err) {
       console.error('Error fetching/syncing user profile:', err);
-      // Fallback
       const fallbackRole: 'admin' | 'customer' = sessionUser.email?.toLowerCase().includes('admin') ? 'admin' : 'customer';
       const fallback: UserProfile = {
         id: sessionUser.id,
@@ -88,7 +92,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       setLoading(true);
 
-      // 1. Check if real Supabase session exists
       if (isSupabaseConfigured()) {
         try {
           const client = getSupabaseClient();
@@ -103,7 +106,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 2. Check local storage session (fallback / demo login)
       try {
         const stored = localStorage.getItem(LOCAL_USER_KEY);
         if (stored) {
@@ -118,14 +120,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuth();
 
-    // Setup Supabase auth listener
     if (isSupabaseConfigured()) {
       const client = getSupabaseClient();
       const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
           await fetchProfileAndSetUser(session.user);
         } else {
-          // If explicitly signed out in Supabase, only clear if it was a Supabase user
           const stored = localStorage.getItem(LOCAL_USER_KEY);
           if (stored) {
             const parsed = JSON.parse(stored);
@@ -154,10 +154,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (error) {
-          // If email confirmation is required or rate limited, inform the user clearly
           if (error.message.toLowerCase().includes('email not confirmed')) {
             return {
-              error: 'Email confirmation required by your Supabase project. (You can turn off "Confirm email" in Supabase Auth -> Providers -> Email settings for instant sign-in).',
+              error: 'Email confirmation required by your Supabase project. (Disable "Confirm email" in Supabase Auth -> Providers -> Email for instant sign-in).',
             };
           }
           return { error: error.message };
@@ -176,9 +175,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const role: 'admin' | 'customer' = email.toLowerCase().includes('admin') ? 'admin' : 'customer';
     const fallbackUser: UserProfile = {
       id: 'usr_' + Math.random().toString(36).substr(2, 9),
-      email,
+      email: email.trim(),
       full_name: email.split('@')[0].replace('.', ' '),
       role,
+      shipping_address: {
+        address: '14 Ring Road Central, Osu',
+        city: 'Accra',
+        state: 'Greater Accra',
+        zip: 'GA-042-8821',
+        country: 'Ghana',
+        phone: '+233 24 123 4567'
+      },
       created_at: new Date().toISOString(),
     };
     setUser(fallbackUser);
@@ -211,9 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (error) {
-          // If Supabase rate limit occurs (free tier 3 emails/hr):
           if (error.message.toLowerCase().includes('rate limit')) {
-            // Log them in locally so they are NOT blocked!
             const localUser: UserProfile = {
               id: 'usr_' + Math.random().toString(36).substr(2, 9),
               email: cleanEmail,
@@ -225,20 +230,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(localUser));
 
             return {
-              message: 'Supabase email rate limit reached (free tier). We logged you in locally so you can continue testing! Tip: In Supabase Auth -> Providers -> Email, disable "Confirm email" to avoid email limits.',
+              message: 'Supabase email limit reached. Logged in locally! (Disable "Confirm email" in Supabase to bypass email limits).',
             };
           }
           return { error: error.message };
         }
 
         if (data.user) {
-          // If session is immediately available (Confirm Email is disabled in Supabase)
           if (data.session) {
             await fetchProfileAndSetUser(data.user);
             return {};
           } else {
-            // Confirm Email is enabled in Supabase project:
-            // Sync profile row anyway:
             try {
               await client.from('profiles').upsert([
                 {
@@ -252,7 +254,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.warn('Profile sync note:', pErr);
             }
 
-            // Set user in local state so they can use the app immediately!
             const newUser: UserProfile = {
               id: data.user.id,
               email: cleanEmail,
@@ -264,7 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(newUser));
 
             return {
-              message: 'Account created! If Supabase email confirmation is required, please check your inbox or disable "Confirm email" in Supabase Auth settings.',
+              message: 'Account created! Please check your email or disable "Confirm email" in Supabase Auth.',
             };
           }
         }
@@ -280,11 +281,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: cleanEmail,
       full_name: cleanName,
       role,
+      shipping_address: {
+        address: '14 Ring Road Central, Osu',
+        city: 'Accra',
+        state: 'Greater Accra',
+        zip: 'GA-042-8821',
+        country: 'Ghana',
+        phone: '+233 24 123 4567'
+      },
       created_at: new Date().toISOString(),
     };
     setUser(localUser);
     localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(localUser));
     return {};
+  };
+
+  // Update Profile Details (Full Name, Phone, Shipping Address)
+  const updateUserProfile = async (details: Partial<UserProfile>): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'No user signed in' };
+
+    const updatedUser: UserProfile = {
+      ...user,
+      ...details,
+      shipping_address: details.shipping_address ? { ...user.shipping_address, ...details.shipping_address } : user.shipping_address,
+    };
+
+    setUser(updatedUser);
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updatedUser));
+
+    // Sync to Supabase
+    const res = await dbService.updateProfile(user.id, details);
+    return res;
   };
 
   // Sign Out
@@ -301,13 +328,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(LOCAL_USER_KEY);
   };
 
-  // 1-Click Demo Logins
+  // 1-Click Demo Logins (Ghanaian Identity)
   const demoAdminLogin = () => {
     const adminUser: UserProfile = {
       id: 'admin-demo-99',
-      email: 'admin@baggetteshop.info',
-      full_name: 'Sandy L. (Admin Director)',
+      email: 'admin@baggette.com.gh',
+      full_name: 'Akua Mensah (Admin Director)',
+      phone: '+233 24 555 0199',
       role: 'admin',
+      shipping_address: {
+        address: '8 Oxford Street, Osu',
+        city: 'Accra',
+        state: 'Greater Accra',
+        zip: 'GA-031-1044',
+        country: 'Ghana',
+        phone: '+233 24 555 0199'
+      },
       created_at: '2026-01-01T00:00:00Z',
     };
     setUser(adminUser);
@@ -317,9 +353,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const demoCustomerLogin = () => {
     const customerUser: UserProfile = {
       id: 'cust-demo-12',
-      email: 'leslie.shopper@nyc.org',
-      full_name: 'Leslie V.',
+      email: 'ama.boateng@baggette.com',
+      full_name: 'Ama Boateng',
+      phone: '+233 50 123 9988',
       role: 'customer',
+      shipping_address: {
+        address: '22 Boundary Road, East Legon',
+        city: 'Accra',
+        state: 'Greater Accra',
+        zip: 'GA-183-9021',
+        country: 'Ghana',
+        phone: '+233 50 123 9988'
+      },
       created_at: '2026-02-14T10:00:00Z',
     };
     setUser(customerUser);
@@ -346,6 +391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signIn,
         signUp,
         signOut,
+        updateUserProfile,
         demoAdminLogin,
         demoCustomerLogin,
         refreshUser,
