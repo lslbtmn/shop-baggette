@@ -109,7 +109,7 @@ export const Footer: React.FC = () => {
           <div className="flex items-center gap-2 text-center">
             <span>© 2026 BAGGETTE SHOP ACCRA.</span>
             <span>•</span>
-            <span>MODELLED AFTER SANDYLIANG.INFO</span>
+            <span>Built By <a href="https://instagram.com/lslbtmn">Leslie</a></span>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <span className="hover:text-ink-800 transition-colors cursor-pointer">PRIVACY</span>
